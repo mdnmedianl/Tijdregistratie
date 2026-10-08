@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tijdregistratie</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2303a9f4'/%3E%3Ccircle cx='16' cy='17' r='9' fill='none' stroke='white' stroke-width='3'/%3E%3Cpath d='M16 12v5l3 2' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #f2f6f8; --card: #fff; --line: #e4eaee; --line2: #c6d2d9;
+    --text: #333; --muted: #999; --soft: #666; --head: #e4eaee;
+    --accent: #03a9f4; --accent-d: #0288d1; --chip: #e1f5fe; --danger: #e53935;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; background: none; border: 0; }
+  input:focus, select:focus { outline: none; }
+  .hidden { display: none !important; }
+
+  /* Topbar */
+  .top { height: 56px; background: #fff; border-bottom: 1px solid var(--line); display: flex; align-items: center; padding: 0 20px; gap: 16px; position: sticky; top: 0; z-index: 20; }
+  .logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 20px; letter-spacing: -.3px; }
+  .logo i { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; }
+  .top .sp { flex: 1; }
+  .top .who { color: var(--soft); font-size: 13px; }
+  .linkbtn { color: var(--accent); font-size: 13px; }
+
+  /* Layout */
+  .layout { display: flex; min-height: calc(100vh - 56px); }
+  nav.side { width: 210px; background: #fff; border-right: 1px solid var(--line); padding-top: 8px; flex-shrink: 0; }
+  nav.side button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 20px; text-transform: uppercase; font-size: 13.5px; color: var(--text); text-align: left; }
+  nav.side button svg { width: 20px; height: 20px; stroke: #666; }
+  nav.side button.on { background: var(--head); }
+  nav.side button:hover:not(.on) { background: #f5f8fa; }
+  main { flex: 1; padding: 20px; min-width: 0; max-width: 1100px; }
+
+  /* Timer bar */
+  .timerbar { background: #fff; border: 1px solid var(--line); display: flex; align-items: center; min-height: 64px; }
+  .timerbar > * { flex-shrink: 0; }
+  .timerbar .desc { flex: 1; min-width: 120px; border: 0; padding: 0 18px; height: 62px; font-size: 15px; background: transparent; }
+  .sep { width: 1px; align-self: stretch; margin: 14px 0; border-left: 1px dotted var(--line2); }
+  .projbtn { padding: 0 14px; height: 40px; display: flex; align-items: center; gap: 6px; color: var(--accent); max-width: 220px; }
+  .projbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .iconbtn { width: 46px; height: 40px; display: grid; place-items: center; color: #999; }
+  .iconbtn svg { width: 19px; height: 19px; }
+  .iconbtn.on { color: var(--accent); }
+  .iconbtn:hover { color: var(--accent-d); }
+  .dollar { font-size: 22px; font-weight: 400; }
+  .clock { font-size: 19px; font-weight: 600; padding: 0 18px; font-variant-numeric: tabular-nums; min-width: 120px; text-align: center; }
+  .manual { display: flex; align-items: center; gap: 6px; padding: 0 12px; }
+  .manual input { border: 1px solid var(--line); padding: 6px 6px; border-radius: 3px; background: #fff; }
+  .manual .dur { font-weight: 600; min-width: 52px; text-align: right; font-variant-numeric: tabular-nums; }
+  .start { background: var(--accent); color: #fff; height: 38px; padding: 0 26px; border-radius: 2px; font-weight: 500; letter-spacing: .4px; margin-left: 4px; }
+  .start:hover { background: var(--accent-d); }
+  .start.stop { background: var(--danger); }
+  .modes { display: flex; flex-direction: column; gap: 2px; padding: 0 10px; }
+  .modes button { color: #bbb; width: 22px; height: 22px; display: grid; place-items: center; }
+  .modes button.on { color: var(--accent); }
+  .modes svg { width: 15px; height: 15px; }
+
+  /* Entry list */
+  .weekhead { display: flex; justify-content: space-between; align-items: baseline; margin: 26px 0 8px; }
+  .weekhead .t { font-size: 15px; }
+  .weekhead .tot { color: var(--muted); font-size: 13px; }
+  .weekhead .tot b { color: var(--text); font-size: 17px; font-weight: 600; margin-left: 4px; font-variant-numeric: tabular-nums; }
+  .day { background: #fff; border: 1px solid var(--line); margin-bottom: 14px; }
+  .dayhead { background: var(--head); display: flex; justify-content: space-between; align-items: center; padding: 9px 18px; font-size: 13px; color: var(--soft); }
+  .dayhead b { color: var(--text); font-size: 16px; font-weight: 600; margin-left: 4px; font-variant-numeric: tabular-nums; }
+  .row { display: flex; align-items: center; border-top: 1px solid var(--line); min-height: 62px; }
+  .row:first-of-type { border-top: 0; }
+  .row .main { flex: 1; min-width: 0; padding: 10px 18px; cursor: pointer; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .row .main:hover .dtext { color: var(--accent-d); }
+  .dtext { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .dtext.empty { color: var(--muted); }
+  .proj { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .proj::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .proj small { color: var(--muted); }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+  .chip { background: var(--chip); color: #444; padding: 3px 10px; font-size: 13px; border-radius: 2px; white-space: nowrap; }
+  .cell { align-self: stretch; display: flex; align-items: center; border-left: 1px dotted var(--line2); margin: 12px 0; padding: 0 14px; }
+  .range { color: var(--soft); font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 112px; justify-content: center; }
+  .dur { font-weight: 600; font-size: 18px; min-width: 78px; justify-content: center; font-variant-numeric: tabular-nums; }
+  .rowbtn { width: 34px; height: 34px; display: grid; place-items: center; color: #999; border-radius: 3px; }
+  .rowbtn:hover { color: var(--accent-d); background: #f2f6f8; }
+  .rowbtn svg { width: 18px; height: 18px; }
+  .row .cell.btns { gap: 2px; padding: 0 8px; }
+  .more { display: block; margin: 8px auto 30px; padding: 10px 20px; border: 1px solid var(--line2); background: #fff; color: var(--soft); }
+  .emptystate { text-align: center; color: var(--muted); padding: 50px 20px; }
+
+  /* Popover & modal */
+  .pop { position: absolute; z-index: 50; background: #fff; border: 1px solid var(--line2); box-shadow: 0 6px 22px rgba(0,0,0,.12); width: 280px; max-height: 360px; display: flex; flex-direction: column; }
+  .pop input.search { border: 0; border-bottom: 1px solid var(--line); padding: 12px 14px; }
+  .pop .list { overflow: auto; padding: 4px 0; }
+  .pop .opt { display: flex; align-items: center; gap: 8px; padding: 9px 14px; width: 100%; text-align: left; }
+  .pop .opt:hover, .pop .opt.sel { background: #f2f6f8; }
+  .pop .opt .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .pop .opt small { color: var(--muted); margin-left: auto; }
+  .pop .foot { border-top: 1px solid var(--line); padding: 10px 14px; color: var(--accent); text-align: left; }
+  .pop .opt input[type=checkbox] { accent-color: var(--accent); }
+  .backdrop { position: fixed; inset: 0; background: rgba(30,40,50,.45); z-index: 60; display: grid; place-items: center; padding: 16px; }
+  .modal { background: #fff; width: 100%; max-width: 480px; border-radius: 3px; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+  .modal h3 { margin: 0; padding: 18px 22px; border-bottom: 1px solid var(--line); font-weight: 500; font-size: 18px; }
+  .modal .body { padding: 18px 22px; display: grid; gap: 14px; }
+  .modal .actions { padding: 14px 22px; border-top: 1px solid var(--line); display: flex; gap: 10px; justify-content: flex-end; }
+  label.f { display: grid; gap: 5px; font-size: 13px; color: var(--soft); }
+  label.f input, label.f select, .inp { border: 1px solid var(--line2); padding: 9px 10px; border-radius: 3px; background: #fff; font-size: 15px; color: var(--text); width: 100%; }
+  label.f input:focus, label.f select:focus, .inp:focus { border-color: var(--accent); }
+  .grid3 { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 10px; }
+  .check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+  .check input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .btn { padding: 9px 18px; border-radius: 2px; border: 1px solid var(--line2); background: #fff; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: var(--accent-d); }
+  .btn.danger { color: var(--danger); border-color: transparent; margin-right: auto; }
+
+  /* Cards: auth, projects, reports */
+  .card { background: #fff; border: 1px solid var(--line); }
+  .card .hd { padding: 14px 18px; border-bottom: 1px solid var(--line); font-weight: 500; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .card .bd { padding: 18px; }
+  h1.page { font-size: 22px; font-weight: 500; margin: 4px 0 18px; }
+  .auth { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+  .auth .card { width: 100%; max-width: 400px; }
+  .auth .bd { display: grid; gap: 14px; }
+  .auth .msg { font-size: 14px; padding: 10px 12px; border-radius: 3px; background: var(--chip); }
+  .auth .msg.err { background: #fdecea; color: #b71c1c; }
+  .auth .logo { justify-content: center; margin: 6px 0 4px; }
+  .auth p { margin: 0; color: var(--soft); font-size: 14px; }
+  .addproj { display: grid; grid-template-columns: 2fr 1.4fr auto auto; gap: 10px; align-items: end; }
+  .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sw { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line2); }
+  .sw.on { box-shadow: 0 0 0 2px var(--text); }
+  table.t { width: 100%; border-collapse: collapse; }
+  table.t th { text-align: left; font-weight: 500; font-size: 12px; text-transform: uppercase; color: var(--muted); padding: 10px 18px; background: #fafcfd; border-bottom: 1px solid var(--line); }
+  table.t td { padding: 12px 18px; border-bottom: 1px solid var(--line); }
+  table.t tr:last-child td { border-bottom: 0; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .colorin { width: 30px; height: 30px; border: 0; padding: 0; background: none; cursor: pointer; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 16px; }
+  .stat { background: #fff; border: 1px solid var(--line); padding: 16px 18px; }
+  .stat small { color: var(--muted); font-size: 12px; text-transform: uppercase; }
+  .stat div { font-size: 26px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .bars { display: grid; gap: 12px; }
+  .bar .lbl { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 4px; gap: 10px; }
+  .bar .track { height: 10px; background: #eef2f5; border-radius: 5px; overflow: hidden; }
+  .bar .fill { height: 100%; border-radius: 5px; }
+  .filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .filters .inp { width: auto; padding: 7px 10px; }
+  .daybars { display: flex; align-items: flex-end; gap: 6px; height: 160px; padding-top: 10px; }
+  .daybars .col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+  .daybars .b { width: 100%; max-width: 38px; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 1px; }
+  .daybars .v { font-size: 11px; color: var(--soft); margin-bottom: 3px; font-variant-numeric: tabular-nums; }
+  .daybars .d { font-size: 11px; color: var(--muted); margin-top: 5px; white-space: nowrap; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 10px 18px; border-radius: 3px; z-index: 90; font-size: 14px; }
+
+  /* Mobiel */
+  @media (max-width: 820px) {
+    .layout { flex-direction: column; }
+    nav.side { width: 100%; display: flex; border-right: 0; border-bottom: 1px solid var(--line); padding: 0; position: sticky; top: 56px; z-index: 15; }
+    nav.side button { justify-content: center; padding: 12px 6px; font-size: 12px; gap: 6px; }
+    main { padding: 12px; }
+    .top .who { display: none; }
+    .timerbar { flex-wrap: wrap; padding-bottom: 6px; }
+    .timerbar > * { order: 2; }
+    .timerbar .desc { order: 0; flex: 0 0 calc(100% - 72px); min-width: 0; height: 52px; border-bottom: 1px solid var(--line); padding: 0 14px; }
+    .modes { order: 1; flex: 0 0 72px; flex-direction: row; align-items: center; justify-content: center; gap: 6px; border-bottom: 1px solid var(--line); height: 52px; padding: 0; }
+    .manual input[type=time] { flex: 1 1 38%; min-width: 0; }
+    .manual input[type=date] { flex: 1 1 70%; }
+    .timerbar .sep { display: none; }
+    .projbtn { padding: 0 8px 0 12px; margin-top: 6px; max-width: 130px; }
+    .iconbtn { width: 36px; margin-top: 6px; }
+    .clock { flex: 1; text-align: right; min-width: 0; padding: 0 10px; font-size: 17px; margin-top: 6px; }
+    .start { padding: 0 16px; margin: 6px 8px 0 0; }
+    .manual { flex-basis: 100%; padding: 8px 12px 2px; flex-wrap: wrap; }
+    .manual + .start { margin-left: auto; }
+    .row { flex-wrap: wrap; }
+    .row .main { flex-basis: 100%; padding: 12px 14px 0; }
+    .row .cell { margin: 4px 0 10px; padding: 0 8px; }
+    .row .cell:nth-child(2) { border-left: 0; padding-left: 4px; }
+    .tags { margin-left: 0; }
+    .range { min-width: 0; font-size: 14px; }
+    .dur { margin-left: auto; min-width: 0; font-size: 16px; }
+    .row .cell.btns { padding: 0 4px; }
+    .addproj { grid-template-columns: 1fr 1fr; }
+    .stats { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .stat div { font-size: 19px; }
+    .grid3 { grid-template-columns: 1fr 1fr; }
+    .grid3 label:first-child { grid-column: 1 / -1; }
+    table.t th, table.t td { padding: 10px; }
+    .hide-m { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* =====================================================================
+   INSTELLINGEN – vul hier je eigen Supabase-gegevens in (zie README).
+   De publishable/anon key is bedoeld om openbaar te staan: de database
+   is afgeschermd met Row Level Security. Zet hier NOOIT de service_role key.
+   ===================================================================== */
+const CONFIG = {
+  SUPABASE_URL: 'https://yqvfwvskvlrhonnnytak.supabase.co',
+  SUPABASE_KEY: 'sb_publishable_T6D5onB_17VGUHlxbdqzgw_0i_8SF7s'
+};
+
+/* ---------- Hulpfuncties ---------- */
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pad = n => String(n).padStart(2, '0');
+const fmtDur = ms => { const m = Math.round(Math.max(0, ms) / 60000); return Math.floor(m / 60) + ':' + pad(m % 60); };
+const fmtClock = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return pad(Math.floor(s / 3600)) + ':' + pad(Math.floor(s / 60) % 60) + ':' + pad(s % 60); };
+const fmtTime = d => pad(d.getHours()) + ':' + pad(d.getMinutes());
+const startOfDay = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+const startOfWeek = d => { const x = startOfDay(d); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return x; };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const dayKey = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const DAYS = ['zo', 'ma', 'di', 'wo', 'do', 'vr', 'za'];
+const MONTHS = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+const fmtDate = d => `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+const dur = e => new Date(e.end_time) - new Date(e.start_time);
+const sum = list => list.reduce((a, e) => a + dur(e), 0);
+const COLORS = ['#03a9f4', '#9c27b0', '#ff9800', '#4caf50', '#e91e63', '#3f51b5', '#009688', '#795548', '#f44336', '#607d8b'];
+const parseTags = s => [...new Set(String(s).split(',').map(t => t.trim()).filter(Boolean))];
+// Combineer datum (yyyy-mm-dd) + tijd (hh:mm) tot een lokale Date
+const at = (date, time) => { const [y, mo, d] = date.split('-').map(Number); const [h, mi] = time.split(':').map(Number); return new Date(y, mo - 1, d, h, mi); };
+
+const I = {
+  clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>',
+  tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/></svg>',
+  play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 5l12 7-12 7z"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>',
+  report: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>',
+  folder: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><path d="M3 6h7l2 2h9v11H3z"/></svg>',
+  timer: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+};
+
+/* ---------- Status ---------- */
+let sb, user;
+let projects = [], entries = [], running = null;
+let view = 'tracker', mode = 'timer', weeksShown = 2;
+let draft = { description: '', project_id: null, tags: [], billable: false };
+let manual = { date: dayKey(new Date()), start: '', end: '' };
+let report = { preset: 'week', from: '', to: '' };
+let tick = null;
+
+const projById = id => projects.find(p => p.id === id);
+const cur = () => running || draft;
+
+function toast(msg) {
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 3000);
+}
+function fail(error) { if (error) { console.error(error); toast('Fout: ' + (error.message || error)); return true; } return false; }
+
+/* ---------- Opstarten ---------- */
+function getConfig() {
+  if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY) return CONFIG;
+  try { return JSON.parse(localStorage.getItem('tt_config') || 'null'); } catch { return null; }
+}
+
+async function init() {
+  const cfg = getConfig();
+  if (!cfg) return renderSetup();
+  if (!window.supabase) { $('#app').innerHTML = '<div class="auth"><div class="card"><div class="bd">De Supabase-bibliotheek kon niet laden. Controleer je internetverbinding.</div></div></div>'; return; }
+  sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_KEY);
+  const { data } = await sb.auth.getSession();
+  user = data.session?.user || null;
+  sb.auth.onAuthStateChange((_ev, session) => {
+    const u = session?.user || null;
+    if ((u && u.id) !== (user && user.id)) { user = u; user ? startApp() : renderLogin(); }
+  });
+  user ? startApp() : renderLogin();
+}
+
+function renderSetup() {
+  $('#app').innerHTML = `
+  <div class="auth"><div class="card"><div class="bd">
+    <div class="logo"><i>${I.clock.replace('currentColor', '#fff')}</i>Tijdregistratie</div>
+    <p>Nog niet gekoppeld aan een database. Vul je Supabase-gegevens in (Project Settings → API). Tip: zet ze liever vast in <code>index.html</code>, dan hoeft dit op geen enkele werkplek opnieuw.</p>
+    <label class="f">Project URL<input id="cu" placeholder="https://xxxx.supabase.co"></label>
+    <label class="f">Publishable / anon key<input id="ck" placeholder="sb_publishable_..."></label>
+    <button class="btn primary" id="cs">Opslaan</button>
+  </div></div></div>`;
+  $('#cs').onclick = () => {
+    const u = $('#cu').value.trim().replace(/\/$/, ''), k = $('#ck').value.trim();
+    if (!u || !k) return toast('Vul beide velden in');
+    localStorage.setItem('tt_config', JSON.stringify({ SUPABASE_URL: u, SUPABASE_KEY: k }));
+    init();
+  };
+}
+
+function renderLogin(msg, isErr) {
+  stopTick();
+  $('#app').innerHTML = `
+  <div class="auth"><div class="card"><form class="bd" id="lf">
+    <div class="logo"><i>${I.clock.replace('currentColor', '#fff')}</i>Tijdregistratie</div>
+    ${msg ? `<div class="msg ${isErr ? 'err' : ''}">${esc(msg)}</div>` : ''}
+    <label class="f">E-mailadres<input id="le" type="email" autocomplete="email" required></label>
+    <label class="f">Wachtwoord<input id="lp" type="password" autocomplete="current-password" minlength="6" required></label>
+    <button class="btn primary" type="submit">Inloggen</button>
+    <button class="linkbtn" type="button" id="ls">Nog geen account? Account aanmaken</button>
+  </form></div></div>`;
+  $('#lf').onsubmit = async ev => {
+    ev.preventDefault();
+    const { error } = await sb.auth.signInWithPassword({ email: $('#le').value.trim(), password: $('#lp').value });
+    if (error) renderLogin(error.message === 'Invalid login credentials' ? 'Onjuist e-mailadres of wachtwoord.' : error.message, true);
+  };
+  $('#ls').onclick = async () => {
+    const email = $('#le').value.trim(), password = $('#lp').value;
+    if (!email || password.length < 6) return renderLogin('Vul een e-mailadres en een wachtwoord van minimaal 6 tekens in, en klik dan op "Account aanmaken".', true);
+    const { data, error } = await sb.auth.signUp({ email, password });
+    if (error) return renderLogin(error.message, true);
+    if (!data.session) renderLogin('Account aangemaakt. Bevestig je e-mailadres via de link in je mail en log daarna in.');
+  };
+}
+
+async function startApp() {
+  renderShell();
+  await loadAll();
+  render();
+}
+
+/* ---------- Data ---------- */
+function rangeStart() { return addDays(startOfWeek(new Date()), -7 * (weeksShown - 1)); }
+
+async function loadAll() {
+  const [p, e, r] = await Promise.all([
+    sb.from('projects').select('*').order('name'),
+    sb.from('time_entries').select('*').not('end_time', 'is', null).gte('start_time', rangeStart().toISOString()).order('start_time', { ascending: false }),
+    sb.from('time_entries').select('*').is('end_time', null).maybeSingle(),
+  ]);
+  if (fail(p.error) || fail(e.error) || fail(r.error)) return;
+  projects = p.data; entries = e.data; running = r.data;
+}
+
+async function setField(k, v) {
+  if (running) {
+    running[k] = v;
+    const { error } = await sb.from('time_entries').update({ [k]: v }).eq('id', running.id);
+    fail(error);
+  } else draft[k] = v;
+}
+
+async function startTimer(from) {
+  if (running) await stopTimer();
+  const src = from || draft;
+  const row = { description: (from ? src.description : $('#desc')?.value ?? '').trim(), project_id: src.project_id, tags: src.tags || [], billable: !!src.billable, start_time: new Date().toISOString() };
+  const { data, error } = await sb.from('time_entries').insert(row).select().single();
+  if (fail(error)) { await loadAll(); return render(); }
+  running = data;
+  renderTimer();
+}
+
+async function stopTimer() {
+  if (!running) return;
+  const desc = $('#desc')?.value.trim();
+  const upd = { end_time: new Date().toISOString() };
+  if (desc !== undefined && desc !== running.description) upd.description = desc;
+  const { data, error } = await sb.from('time_entries').update(upd).eq('id', running.id).select().single();
+  if (fail(error)) return;
+  running = null;
+  draft = { description: '', project_id: null, tags: [], billable: false };
+  entries.unshift(data); entries.sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
+  renderTimer(); renderList();
+}
+
+async function addManual() {
+  const desc = $('#desc').value.trim();
+  if (!manual.start || !manual.end) return toast('Vul een begin- en eindtijd in');
+  const s = at(manual.date, manual.start); let e = at(manual.date, manual.end);
+  if (e <= s) e = addDays(e, 1); // over middernacht
+  const row = { description: desc, project_id: draft.project_id, tags: draft.tags, billable: draft.billable, start_time: s.toISOString(), end_time: e.toISOString() };
+  const { data, error } = await sb.from('time_entries').insert(row).select().single();
+  if (fail(error)) return;
+  if (new Date(data.start_time) >= rangeStart()) { entries.push(data); entries.sort((a, b) => new Date(b.start_time) - new Date(a.start_time)); }
+  draft = { description: '', project_id: null, tags: [], billable: false };
+  manual.start = manual.end = '';
+  renderTimer(); renderList();
+  toast('Registratie toegevoegd');
+}
+
+async function createProject(name, client = '', color) {
+  const { data, error } = await sb.from('projects').insert({ name, client: client || null, color: color || COLORS[projects.length % COLORS.length] }).select().single();
+  if (fail(error)) return null;
+  projects.push(data); projects.sort((a, b) => a.name.localeCompare(b.name));
+  return data;
+}
+
+/* ---------- Weergave: frame ---------- */
+function renderShell() {
+  $('#app').innerHTML = `
+  <header class="top">
+    <div class="logo"><i>${I.clock.replace('currentColor', '#fff')}</i>Tijdregistratie</div>
+    <div class="sp"></div>
+    <span class="who">${esc(user.email)}</span>
+    <button class="linkbtn" id="logout">Uitloggen</button>
+  </header>
+  <div class="layout">
+    <nav class="side">
+      <button data-v="tracker">${I.timer.replace('fill="none"', 'fill="none" stroke="#666"')}Tijd</button>
+      <button data-v="reports">${I.report.replace('fill="none"', 'fill="none" stroke="#666"')}Rapporten</button>
+      <button data-v="projects">${I.folder.replace('fill="none"', 'fill="none" stroke="#666"')}Projecten</button>
+    </nav>
+    <main id="main"></main>
+  </div>`;
+  $('#logout').onclick = async () => { await sb.auth.signOut(); };
+  $$('nav.side button').forEach(b => b.onclick = () => { view = b.dataset.v; render(); });
+}
+
+function render() {
+  if (!$('#main')) return;
+  $$('nav.side button').forEach(b => b.classList.toggle('on', b.dataset.v === view));
+  stopTick();
+  if (view === 'tracker') {
+    $('#main').innerHTML = '<div id="tb"></div><div id="list"></div>';
+    renderTimer(); renderList();
+  } else if (view === 'projects') renderProjects();
+  else renderReports();
+}
+
+function stopTick() { if (tick) clearInterval(tick); tick = null; }
+
+/* ---------- Timerbalk ---------- */
+function renderTimer() {
+  const tb = $('#tb'); if (!tb) return;
+  const c = cur(); const p = projById(c.project_id);
+  const descVal = $('#desc') ? $('#desc').value : c.description;
+  const isManual = mode === 'manual' && !running;
+  tb.innerHTML = `
+  <div class="timerbar">
+    <input class="desc" id="desc" placeholder="Waar werk je aan?" value="${esc(running ? running.description : descVal)}" autocomplete="off">
+    <button class="projbtn" id="projBtn" ${p ? `style="color:${esc(p.color)}"` : ''}>${p ? `<span class="proj"><span>${esc(p.name)}</span></span>` : I.plus + '<span>Project</span>'}</button>
+    <div class="sep"></div>
+    <button class="iconbtn ${c.tags?.length ? 'on' : ''}" id="tagBtn" title="${esc((c.tags || []).join(', ') || 'Tags')}">${I.tag}</button>
+    <div class="sep"></div>
+    <button class="iconbtn dollar ${c.billable ? 'on' : ''}" id="billBtn" title="Declarabel">$</button>
+    <div class="sep"></div>
+    ${isManual ? `
+      <div class="manual">
+        <input type="time" id="mS" value="${manual.start}" aria-label="Begintijd"> –
+        <input type="time" id="mE" value="${manual.end}" aria-label="Eindtijd">
+        <input type="date" id="mD" value="${manual.date}" aria-label="Datum">
+        <span class="dur" id="mDur"></span>
+      </div>
+      <button class="start" id="goBtn">TOEVOEGEN</button>`
+    : `<div class="clock" id="clock">00:00:00</div>
+      <button class="start ${running ? 'stop' : ''}" id="goBtn">${running ? 'STOP' : 'START'}</button>`}
+    <div class="modes">
+      <button data-m="timer" class="${mode === 'timer' || running ? 'on' : ''}" title="Timer">${I.clock}</button>
+      <button data-m="manual" class="${isManual ? 'on' : ''}" title="Handmatig invoeren">${I.list}</button>
+    </div>
+  </div>`;
+
+  const desc = $('#desc');
+  desc.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); $('#goBtn').click(); } };
+  desc.onchange = () => { if (running) setField('description', desc.value.trim()); else draft.description = desc.value; };
+  $('#projBtn').onclick = e => projectPicker(e.currentTarget, cur().project_id, async id => { await setField('project_id', id); renderTimer(); });
+  $('#tagBtn').onclick = e => tagPicker(e.currentTarget, cur().tags || [], async tags => { await setField('tags', tags); renderTimer(); });
+  $('#billBtn').onclick = async () => { await setField('billable', !cur().billable); renderTimer(); };
+  $$('.modes button').forEach(b => b.onclick = () => { if (running) return toast('Stop eerst de lopende timer'); mode = b.dataset.m; renderTimer(); });
+
+  if (isManual) {
+    const upd = () => {
+      manual.start = $('#mS').value; manual.end = $('#mE').value; manual.date = $('#mD').value || dayKey(new Date());
+      if (manual.start && manual.end) { let s = at(manual.date, manual.start), e = at(manual.date, manual.end); if (e <= s) e = addDays(e, 1); $('#mDur').textContent = fmtDur(e - s); }
+      else $('#mDur').textContent = '';
+    };
+    ['#mS', '#mE', '#mD'].forEach(s => $(s).oninput = upd); upd();
+    $('#goBtn').onclick = addManual;
+  } else {
+    $('#goBtn').onclick = () => running ? stopTimer() : startTimer();
+    stopTick();
+    const upd = () => {
+      const ms = running ? Date.now() - new Date(running.start_time) : 0;
+      if ($('#clock')) $('#clock').textContent = fmtClock(ms);
+      document.title = running ? fmtClock(ms) + ' · ' + (running.description || 'Tijdregistratie') : 'Tijdregistratie';
+    };
+    upd(); if (running) tick = setInterval(upd, 1000);
+  }
+}
+
+/* ---------- Lijst per week / dag ---------- */
+function renderList() {
+  const el = $('#list'); if (!el) return;
+  if (!entries.length) { el.innerHTML = `<div class="emptystate">Nog geen registraties. Typ hierboven waar je aan werkt en klik op START.</div><button class="more" id="more">Eerdere weken laden</button>`; $('#more').onclick = loadMore; return; }
+  const today = startOfDay(new Date()), thisWeek = startOfWeek(today);
+  const weeks = new Map();
+  for (const e of entries) {
+    const d = new Date(e.start_time); const wk = dayKey(startOfWeek(d)); const dk = dayKey(d);
+    if (!weeks.has(wk)) weeks.set(wk, { start: startOfWeek(d), days: new Map() });
+    const w = weeks.get(wk);
+    if (!w.days.has(dk)) w.days.set(dk, { date: startOfDay(d), list: [] });
+    w.days.get(dk).list.push(e);
+  }
+  let html = '';
+  for (const w of weeks.values()) {
+    const all = [...w.days.values()].flatMap(d => d.list);
+    const diff = Math.round((thisWeek - w.start) / 864e5 / 7);
+    const end = addDays(w.start, 6);
+    const label = diff === 0 ? 'Deze week' : diff === 1 ? 'Vorige week' : `${w.start.getDate()} ${MONTHS[w.start.getMonth()]} – ${end.getDate()} ${MONTHS[end.getMonth()]}`;
+    html += `<div class="weekhead"><span class="t">${label}</span><span class="tot">Weektotaal: <b>${fmtDur(sum(all))}</b></span></div>`;
+    for (const d of w.days.values()) {
+      const dd = Math.round((today - d.date) / 864e5);
+      const dl = dd === 0 ? 'Vandaag' : dd === 1 ? 'Gisteren' : fmtDate(d.date);
+      html += `<div class="day"><div class="dayhead"><span>${dl}</span><span>Totaal: <b>${fmtDur(sum(d.list))}</b></span></div>`;
+      for (const e of d.list) html += rowHtml(e);
+      html += '</div>';
+    }
+  }
+  html += '<button class="more" id="more">Eerdere weken laden</button>';
+  el.innerHTML = html;
+  $('#more').onclick = loadMore;
+  el.onclick = async ev => {
+    const t = ev.target.closest('[data-act]'); if (!t) return;
+    const e = entries.find(x => x.id === t.closest('.row').dataset.id); if (!e) return;
+    const act = t.dataset.act;
+    if (act === 'edit') editEntry(e);
+    else if (act === 'play') { mode = 'timer'; await startTimer(e); }
+    else if (act === 'bill') {
+      e.billable = !e.billable;
+      const { error } = await sb.from('time_entries').update({ billable: e.billable }).eq('id', e.id);
+      if (!fail(error)) renderList();
+    } else if (act === 'del') deleteEntry(e);
+  };
+}
+
+function rowHtml(e) {
+  const p = projById(e.project_id), s = new Date(e.start_time), en = new Date(e.end_time);
+  return `<div class="row" data-id="${e.id}">
+    <div class="main" data-act="edit">
+      <span class="dtext ${e.description ? '' : 'empty'}">${esc(e.description || '(geen omschrijving)')}</span>
+      ${p ? `<span class="proj" style="color:${esc(p.color)}">${esc(p.name)}${p.client ? ` <small>· ${esc(p.client)}</small>` : ''}</span>` : ''}
+      ${e.tags?.length ? `<span class="tags">${e.tags.map(t => `<span class="chip">${esc(t)}</span>`).join('')}</span>` : ''}
+    </div>
+    <div class="cell"><button class="iconbtn dollar ${e.billable ? 'on' : ''}" data-act="bill" title="Declarabel">$</button></div>
+    <div class="cell range">${fmtTime(s)} – ${fmtTime(en)}</div>
+    <div class="cell dur">${fmtDur(en - s)}</div>
+    <div class="cell btns">
+      <button class="rowbtn" data-act="play" title="Doorgaan met deze taak">${I.play}</button>
+      <button class="rowbtn" data-act="del" title="Verwijderen">${I.trash}</button>
+    </div>
+  </div>`;
+}
+
+async function loadMore() { weeksShown += 4; await loadAll(); renderList(); }
+
+async function deleteEntry(e) {
+  if (!confirm('Deze registratie verwijderen?')) return false;
+  const { error } = await sb.from('time_entries').delete().eq('id', e.id);
+  if (fail(error)) return false;
+  entries = entries.filter(x => x.id !== e.id); renderList(); return true;
+}
+
+/* ---------- Bewerkvenster ---------- */
+function editEntry(e) {
+  const s = new Date(e.start_time), en = new Date(e.end_time);
+  const bd = document.createElement('div'); bd.className = 'backdrop';
+  bd.innerHTML = `<form class="modal">
+    <h3>Registratie bewerken</h3>
+    <div class="body">
+      <label class="f">Omschrijving<input id="eD" value="${esc(e.description)}"></label>
+      <label class="f">Project<select id="eP"><option value="">— Geen project —</option>${projects.map(p => `<option value="${p.id}" ${p.id === e.project_id ? 'selected' : ''}>${esc(p.name)}${p.client ? ' · ' + esc(p.client) : ''}</option>`).join('')}</select></label>
+      <label class="f">Tags (komma-gescheiden)<input id="eT" value="${esc((e.tags || []).join(', '))}"></label>
+      <div class="grid3">
+        <label class="f">Datum<input type="date" id="eDa" value="${dayKey(s)}" required></label>
+        <label class="f">Begin<input type="time" id="eS" value="${fmtTime(s)}" required></label>
+        <label class="f">Eind<input type="time" id="eE" value="${fmtTime(en)}" required></label>
+      </div>
+      <label class="check"><input type="checkbox" id="eB" ${e.billable ? 'checked' : ''}> Declarabel</label>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn danger" id="eDel">Verwijderen</button>
+      <button type="button" class="btn" id="eC">Annuleren</button>
+      <button type="submit" class="btn primary">Opslaan</button>
+    </div></form>`;
+  document.body.appendChild(bd);
+  const close = () => bd.remove();
+  bd.onclick = ev => { if (ev.target === bd) close(); };
+  $('#eC', bd).onclick = close;
+  $('#eDel', bd).onclick = async () => { if (await deleteEntry(e)) close(); };
+  $('#eD', bd).focus();
+  $('form', bd).onsubmit = async ev => {
+    ev.preventDefault();
+    const ns = at($('#eDa', bd).value, $('#eS', bd).value); let ne = at($('#eDa', bd).value, $('#eE', bd).value);
+    if (ne <= ns) ne = addDays(ne, 1);
+    const upd = { description: $('#eD', bd).value.trim(), project_id: $('#eP', bd).value || null, tags: parseTags($('#eT', bd).value), billable: $('#eB', bd).checked, start_time: ns.toISOString(), end_time: ne.toISOString() };
+    const { error } = await sb.from('time_entries').update(upd).eq('id', e.id);
+    if (fail(error)) return;
+    Object.assign(e, upd);
+    entries.sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
+    close(); renderList();
+  };
+}
+
+/* ---------- Popovers ---------- */
+let popEl = null;
+function closePop() { if (popEl) { popEl.remove(); popEl = null; document.removeEventListener('mousedown', outside, true); } }
+function outside(ev) { if (popEl && !popEl.contains(ev.target)) closePop(); }
+function openPop(anchor, html) {
+  closePop();
+  popEl = document.createElement('div'); popEl.className = 'pop'; popEl.innerHTML = html;
+  document.body.appendChild(popEl);
+  const r = anchor.getBoundingClientRect();
+  const left = Math.max(8, Math.min(r.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - popEl.offsetWidth - 8));
+  popEl.style.left = left + 'px'; popEl.style.top = (r.bottom + window.scrollY + 4) + 'px';
+  setTimeout(() => document.addEventListener('mousedown', outside, true));
+  return popEl;
+}
+
+function projectPicker(anchor, selected, onPick) {
+  const pop = openPop(anchor, `<input class="search" placeholder="Zoek of maak een project…"><div class="list"></div><button class="foot">+ Nieuw project</button>`);
+  const inp = $('.search', pop), list = $('.list', pop);
+  const draw = () => {
+    const q = inp.value.trim().toLowerCase();
+    const items = projects.filter(p => !q || p.name.toLowerCase().includes(q) || (p.client || '').toLowerCase().includes(q));
+    list.innerHTML = (q ? '' : `<button class="opt ${!selected ? 'sel' : ''}" data-id=""><span class="dot" style="background:#ccc"></span>Geen project</button>`) +
+      items.map(p => `<button class="opt ${p.id === selected ? 'sel' : ''}" data-id="${p.id}"><span class="dot" style="background:${esc(p.color)}"></span>${esc(p.name)}<small>${esc(p.client || '')}</small></button>`).join('') +
+      (!items.length && q ? `<div class="opt" style="color:#999">Geen project gevonden</div>` : '');
+    $('.foot', pop).textContent = q ? `+ Project "${inp.value.trim()}" aanmaken` : '+ Nieuw project';
+  };
+  draw(); inp.focus(); inp.oninput = draw;
+  list.onclick = ev => { const b = ev.target.closest('[data-id]'); if (!b) return; closePop(); onPick(b.dataset.id || null); };
+  const create = async () => {
+    const name = inp.value.trim() || prompt('Naam van het nieuwe project:')?.trim();
+    if (!name) return;
+    closePop(); const p = await createProject(name); if (p) onPick(p.id);
+  };
+  $('.foot', pop).onclick = create;
+  inp.onkeydown = ev => { if (ev.key === 'Enter') { ev.preventDefault(); const first = $('.opt[data-id]:not([data-id=""])', list); first && inp.value.trim() ? first.click() : create(); } if (ev.key === 'Escape') closePop(); };
+}
+
+function knownTags() { return [...new Set(entries.flatMap(e => e.tags || []).concat(cur().tags || []))].sort((a, b) => a.localeCompare(b)); }
+
+function tagPicker(anchor, selected, onChange) {
+  let sel = [...selected];
+  const pop = openPop(anchor, `<input class="search" placeholder="Zoek of voeg een tag toe…"><div class="list"></div>`);
+  const inp = $('.search', pop), list = $('.list', pop);
+  const draw = () => {
+    const q = inp.value.trim().toLowerCase();
+    const all = [...new Set(knownTags().concat(sel))].filter(t => !q || t.toLowerCase().includes(q));
+    list.innerHTML = all.map(t => `<label class="opt"><input type="checkbox" value="${esc(t)}" ${sel.includes(t) ? 'checked' : ''}>${esc(t)}</label>`).join('') +
+      (q && !all.some(t => t.toLowerCase() === q) ? `<button class="opt" data-new style="color:var(--accent)">+ Tag "${esc(inp.value.trim())}" toevoegen</button>` : '') +
+      (!all.length && !q ? '<div class="opt" style="color:#999">Typ om een tag toe te voegen</div>' : '');
+  };
+  draw(); inp.focus(); inp.oninput = draw;
+  const add = () => { const t = inp.value.trim(); if (t && !sel.includes(t)) { sel.push(t); onChange([...sel]); } inp.value = ''; draw(); };
+  list.onchange = ev => { const v = ev.target.value; sel = ev.target.checked ? [...sel, v] : sel.filter(x => x !== v); onChange([...sel]); };
+  list.onclick = ev => { if (ev.target.closest('[data-new]')) add(); };
+  inp.onkeydown = ev => { if (ev.key === 'Enter') { ev.preventDefault(); add(); } if (ev.key === 'Escape') closePop(); };
+}
+
+/* ---------- Projecten ---------- */
+async function renderProjects() {
+  let color = COLORS[projects.length % COLORS.length];
+  const { data: tot } = await sb.from('time_entries').select('project_id,start_time,end_time').not('end_time', 'is', null).not('project_id', 'is', null);
+  const totals = {}; (tot || []).forEach(e => totals[e.project_id] = (totals[e.project_id] || 0) + dur(e));
+  $('#main').innerHTML = `
+    <h1 class="page">Projecten</h1>
+    <div class="card" style="margin-bottom:16px"><div class="bd">
+      <form class="addproj" id="pf">
+        <label class="f">Projectnaam<input id="pn" required></label>
+        <label class="f">Klant (optioneel)<input id="pc"></label>
+        <div class="f" style="display:grid;gap:5px;font-size:13px;color:var(--soft)">Kleur<div class="swatches" id="sws">${COLORS.map(c => `<button type="button" class="sw ${c === color ? 'on' : ''}" data-c="${c}" style="background:${c}"></button>`).join('')}</div></div>
+        <button class="btn primary" type="submit">Toevoegen</button>
+      </form>
+    </div></div>
+    <div class="card">
+      ${projects.length ? `<table class="t"><thead><tr><th style="width:44px"></th><th>Project</th><th class="hide-m">Klant</th><th class="num">Totaal</th><th style="width:50px"></th></tr></thead><tbody>
+      ${projects.map(p => `<tr data-id="${p.id}">
+        <td><input type="color" class="colorin" value="${esc(p.color)}" title="Kleur wijzigen"></td>
+        <td><button class="pname" style="color:${esc(p.color)};text-align:left" title="Naam wijzigen">${esc(p.name)}</button></td>
+        <td class="hide-m"><button class="pclient" style="color:var(--soft);text-align:left" title="Klant wijzigen">${esc(p.client || '—')}</button></td>
+        <td class="num">${fmtDur(totals[p.id] || 0)}</td>
+        <td><button class="rowbtn pdel" title="Verwijderen">${I.trash}</button></td></tr>`).join('')}
+      </tbody></table>` : '<div class="emptystate">Nog geen projecten. Voeg hierboven je eerste project toe.</div>'}
+    </div>`;
+  $('#sws').onclick = ev => { const b = ev.target.closest('[data-c]'); if (!b) return; color = b.dataset.c; $$('.sw').forEach(s => s.classList.toggle('on', s === b)); };
+  $('#pf').onsubmit = async ev => { ev.preventDefault(); if (await createProject($('#pn').value.trim(), $('#pc').value.trim(), color)) renderProjects(); };
+  $$('tr[data-id]').forEach(tr => {
+    const p = projById(tr.dataset.id);
+    const save = async upd => { const { error } = await sb.from('projects').update(upd).eq('id', p.id); if (!fail(error)) { Object.assign(p, upd); projects.sort((a, b) => a.name.localeCompare(b.name)); renderProjects(); } };
+    $('.colorin', tr).onchange = ev => save({ color: ev.target.value });
+    $('.pname', tr).onclick = () => { const n = prompt('Projectnaam:', p.name)?.trim(); if (n) save({ name: n }); };
+    $('.pclient', tr).onclick = () => { const n = prompt('Klant:', p.client || ''); if (n !== null) save({ client: n.trim() || null }); };
+    $('.pdel', tr).onclick = async () => {
+      if (!confirm(`Project "${p.name}" verwijderen? De registraties blijven bewaard, maar zonder project.`)) return;
+      const { error } = await sb.from('projects').delete().eq('id', p.id);
+      if (fail(error)) return;
+      projects = projects.filter(x => x.id !== p.id);
+      entries.forEach(e => { if (e.project_id === p.id) e.project_id = null; });
+      renderProjects();
+    };
+  });
+}
+
+/* ---------- Rapporten ---------- */
+function reportRange() {
+  const now = new Date(), wk = startOfWeek(now);
+  switch (report.preset) {
+    case 'week': return [wk, addDays(wk, 7)];
+    case 'lastweek': return [addDays(wk, -7), wk];
+    case 'month': return [new Date(now.getFullYear(), now.getMonth(), 1), new Date(now.getFullYear(), now.getMonth() + 1, 1)];
+    case 'lastmonth': return [new Date(now.getFullYear(), now.getMonth() - 1, 1), new Date(now.getFullYear(), now.getMonth(), 1)];
+    case 'year': return [new Date(now.getFullYear(), 0, 1), new Date(now.getFullYear() + 1, 0, 1)];
+    default: {
+      const f = report.from ? at(report.from, '00:00') : wk, t = report.to ? addDays(at(report.to, '00:00'), 1) : addDays(wk, 7);
+      return [f, t];
+    }
+  }
+}
+
+async function renderReports() {
+  const [from, to] = reportRange();
+  if (!report.from) { report.from = dayKey(from); report.to = dayKey(addDays(to, -1)); }
+  $('#main').innerHTML = `
+    <h1 class="page">Rapporten</h1>
+    <div class="filters" style="margin-bottom:16px">
+      <select class="inp" id="rp">
+        ${[['week', 'Deze week'], ['lastweek', 'Vorige week'], ['month', 'Deze maand'], ['lastmonth', 'Vorige maand'], ['year', 'Dit jaar'], ['custom', 'Aangepast']].map(([v, l]) => `<option value="${v}" ${report.preset === v ? 'selected' : ''}>${l}</option>`).join('')}
+      </select>
+      <span id="rc" class="${report.preset === 'custom' ? '' : 'hidden'}" style="display:flex;gap:6px;align-items:center">
+        <input type="date" class="inp" id="rf" value="${dayKey(from)}"> t/m <input type="date" class="inp" id="rt" value="${dayKey(addDays(to, -1))}">
+      </span>
+      <select class="inp" id="rpj"><option value="">Alle projecten</option>${projects.map(p => `<option value="${p.id}" ${report.project === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+      <span style="flex:1"></span>
+      <button class="btn" id="csv">Exporteren (CSV)</button>
+    </div>
+    <div id="rout"><div class="emptystate">Laden…</div></div>`;
+  $('#rp').onchange = ev => { report.preset = ev.target.value; if (report.preset !== 'custom') report.from = ''; renderReports(); };
+  $('#rf') && ($('#rf').onchange = ev => { report.from = ev.target.value; renderReports(); });
+  $('#rt') && ($('#rt').onchange = ev => { report.to = ev.target.value; renderReports(); });
+  $('#rpj').onchange = ev => { report.project = ev.target.value || null; renderReports(); };
+
+  let q = sb.from('time_entries').select('*').not('end_time', 'is', null).gte('start_time', from.toISOString()).lt('start_time', to.toISOString()).order('start_time');
+  if (report.project) q = q.eq('project_id', report.project);
+  const { data, error } = await q;
+  if (fail(error)) return;
+  const list = data || [];
+  $('#csv').onclick = () => exportCsv(list, from, to);
+
+  const total = sum(list), billable = sum(list.filter(e => e.billable));
+  const byProj = new Map();
+  list.forEach(e => byProj.set(e.project_id || '', (byProj.get(e.project_id || '') || 0) + dur(e)));
+  const rows = [...byProj.entries()].sort((a, b) => b[1] - a[1]);
+  const max = rows.length ? rows[0][1] : 1;
+
+  const days = []; const span = Math.round((to - from) / 864e5);
+  if (span <= 31) for (let d = new Date(from); d < to; d = addDays(d, 1)) days.push(d);
+  const byDay = {}; list.forEach(e => { const k = dayKey(new Date(e.start_time)); byDay[k] = (byDay[k] || 0) + dur(e); });
+  const dmax = Math.max(1, ...days.map(d => byDay[dayKey(d)] || 0));
+
+  $('#rout').innerHTML = `
+    <div class="stats">
+      <div class="stat"><small>Totaal</small><div>${fmtDur(total)}</div></div>
+      <div class="stat"><small>Declarabel</small><div>${fmtDur(billable)}</div></div>
+      <div class="stat"><small>Registraties</small><div>${list.length}</div></div>
+    </div>
+    ${days.length ? `<div class="card" style="margin-bottom:16px"><div class="hd">Per dag</div><div class="bd"><div class="daybars">
+      ${days.map(d => { const v = byDay[dayKey(d)] || 0; return `<div class="col" title="${fmtDate(d)}: ${fmtDur(v)}"><span class="v">${v ? fmtDur(v) : ''}</span><div class="b" style="height:${(v / dmax * 100).toFixed(1)}%;${v ? '' : 'background:#eef2f5'}"></div><span class="d">${days.length > 10 ? d.getDate() : DAYS[d.getDay()] + ' ' + d.getDate()}</span></div>`; }).join('')}
+    </div></div></div>` : ''}
+    <div class="card" style="margin-bottom:16px"><div class="hd">Per project</div><div class="bd">
+      ${rows.length ? `<div class="bars">${rows.map(([id, ms]) => { const p = projById(id); return `<div class="bar"><div class="lbl"><span>${p ? esc(p.name) + (p.client ? ` <small style="color:var(--muted)">· ${esc(p.client)}</small>` : '') : '<span style="color:var(--muted)">Geen project</span>'}</span><b style="font-variant-numeric:tabular-nums">${fmtDur(ms)} <small style="color:var(--muted);font-weight:400">${total ? Math.round(ms / total * 100) : 0}%</small></b></div><div class="track"><div class="fill" style="width:${(ms / max * 100).toFixed(1)}%;background:${p ? esc(p.color) : '#bbb'}"></div></div></div>`; }).join('')}</div>` : '<div class="emptystate" style="padding:20px">Geen registraties in deze periode.</div>'}
+    </div></div>
+    ${list.length ? `<div class="card"><div class="hd">Registraties</div><table class="t"><thead><tr><th>Datum</th><th>Omschrijving</th><th class="hide-m">Project</th><th class="num">Duur</th></tr></thead><tbody>
+      ${list.map(e => { const p = projById(e.project_id); return `<tr><td style="white-space:nowrap">${fmtDate(new Date(e.start_time))}</td><td>${esc(e.description || '—')}</td><td class="hide-m">${p ? `<span class="proj" style="color:${esc(p.color)}">${esc(p.name)}</span>` : ''}</td><td class="num">${fmtDur(dur(e))}</td></tr>`; }).join('')}
+    </tbody></table></div>` : ''}`;
+}
+
+function exportCsv(list, from, to) {
+  const q = v => { const s = String(v ?? ''); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const head = ['Datum', 'Begin', 'Eind', 'Duur (u:mm)', 'Duur (uren)', 'Omschrijving', 'Project', 'Klant', 'Tags', 'Declarabel'];
+  const lines = list.map(e => {
+    const s = new Date(e.start_time), en = new Date(e.end_time), p = projById(e.project_id);
+    return [dayKey(s), fmtTime(s), fmtTime(en), fmtDur(en - s), ((en - s) / 36e5).toFixed(2).replace('.', ','), e.description, p?.name || '', p?.client || '', (e.tags || []).join(', '), e.billable ? 'Ja' : 'Nee'].map(q).join(';');
+  });
+  const blob = new Blob(['﻿' + [head.join(';'), ...lines].join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `tijdregistratie_${dayKey(from)}_${dayKey(addDays(to, -1))}.csv`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/* ---------- Synchroniseren tussen werkplekken ---------- */
+// Bij terugkeren naar het tabblad halen we de nieuwste gegevens op,
+// zodat een timer die op een andere computer is gestart/gestopt meteen klopt.
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible' || !user || !sb) return;
+  if (document.activeElement && document.activeElement.matches('input, select')) return;
+  await loadAll();
+  if (view === 'tracker') { renderTimer(); renderList(); }
+});
+
+init();
+</script>
+</body>
+</html>
