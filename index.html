@@ -1392,7 +1392,7 @@ async function renderReports() {
       </span>
       <select class="inp" id="rcl"><option value="">Alle klanten</option>${clients.map(c => `<option value="${c.id}" ${report.client === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
       <span style="flex:1"></span>
-      <button class="btn" id="csv">Exporteren (CSV)</button>
+      <button class="btn primary" id="xlsx">Exporteren naar Excel</button><button class="btn" id="csv" title="Platte lijst voor andere programma's">CSV</button>
     </div>
     <div id="rout"><div class="emptystate">Laden…</div></div>`;
   $('#rp').onchange = ev => { report.preset = ev.target.value; renderReports(); };
@@ -1405,6 +1405,7 @@ async function renderReports() {
   if (fail(error)) return;
   const list = (data || []).filter(e => !report.client || projById(e.project_id)?.client_id === report.client);
   $('#csv').onclick = () => exportCsv(list, from, to);
+  $('#xlsx').onclick = () => { try { exportXlsx(list, from, to); } catch (err) { console.error(err); toast('Excel-export mislukt: ' + err.message); } };
 
   const total = sum(list), billable = sum(list.filter(e => e.billable));
 
@@ -1479,17 +1480,218 @@ async function renderReports() {
   $('#rClose').onclick = () => { allKeys().forEach(k => listOpen.delete(k)); rerender(); };
 }
 
+// CSV in het standaardformaat (komma's, punt als decimaalteken) voor andere programma's
 function exportCsv(list, from, to) {
-  const q = v => { const s = String(v ?? ''); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const q = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const head = ['Datum', 'Begin', 'Eind', 'Duur (u:mm)', 'Duur (uren)', 'Klant', 'Project', 'Taak', 'Omschrijving', 'Tags', 'Declarabel'];
   const lines = list.map(e => {
     const s = new Date(e.start_time), en = new Date(e.end_time), p = projById(e.project_id), c = p && clientById(p.client_id), t = taskById(e.task_id);
-    return [dayKey(s), fmtTime(s), fmtTime(en), fmtDur(en - s), ((en - s) / 36e5).toFixed(2).replace('.', ','), c?.name || '', p?.name || '', t?.name || '', e.description, (e.tags || []).join(', '), e.billable ? 'Ja' : 'Nee'].map(q).join(';');
+    return [dayKey(s), fmtTime(s), fmtTime(en), fmtDur(en - s), ((en - s) / 36e5).toFixed(2), c?.name || '', p?.name || '', t?.name || '', e.description, (e.tags || []).join('; '), e.billable ? 'Ja' : 'Nee'].map(q).join(',');
   });
-  const blob = new Blob(['﻿' + [head.join(';'), ...lines].join('\r\n')], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = `tijdregistratie_${dayKey(from)}_${dayKey(addDays(to, -1))}.csv`; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  download(new Blob(['﻿' + [head.join(','), ...lines].join('\r\n')], { type: 'text/csv;charset=utf-8' }), `tijdregistratie_${dayKey(from)}_${dayKey(addDays(to, -1))}.csv`);
+}
+
+function download(blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+/* ======================================================================
+   Excel-export (.xlsx) – zonder externe bibliotheek.
+   Een .xlsx is een zip-bestand met XML; dat bouwen we hier zelf op.
+   ====================================================================== */
+const XL = {
+  esc: s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ''),
+  col: n => { let s = ''; for (n++; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + (n - 1) % 26) + s; return s; },
+  hex: c => /^#[0-9a-f]{6}$/i.test(c || '') ? c.slice(1).toUpperCase() : 'A8A29E',
+  // Meng een kleur met wit (tint) of zwart (shade); p = aandeel van de kleur
+  tint: (c, p) => { const h = XL.hex(c); return 'FF' + [0, 2, 4].map(i => Math.round(parseInt(h.substr(i, 2), 16) * p + 255 * (1 - p)).toString(16).padStart(2, '0')).join('').toUpperCase(); },
+  shade: (c, p) => { const h = XL.hex(c); return 'FF' + [0, 2, 4].map(i => Math.round(parseInt(h.substr(i, 2), 16) * p).toString(16).padStart(2, '0')).join('').toUpperCase(); },
+  date: d => (Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 864e5,
+  time: d => (d.getHours() * 60 + d.getMinutes()) / 1440,
+  dur: ms => Math.round(ms / 60000) / 1440,
+};
+
+// Houdt alle unieke opmaakcombinaties bij en schrijft styles.xml
+function xlStyles() {
+  const fonts = ['<font><sz val="10.5"/><color rgb="FF1E2B2A"/><name val="Calibri"/><family val="2"/></font>'];
+  const fills = ['<fill><patternFill patternType="none"/></fill>', '<fill><patternFill patternType="gray125"/></fill>'];
+  const borders = ['<border><left/><right/><top/><bottom/><diagonal/></border>'];
+  const fmts = [], xfs = ['<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'];
+  const idx = (arr, x) => { let i = arr.indexOf(x); if (i < 0) { arr.push(x); i = arr.length - 1; } return i; };
+  const cache = new Map();
+  return {
+    id(st = {}) {
+      const key = JSON.stringify(st); if (cache.has(key)) return cache.get(key);
+      const f = st.font || {};
+      const font = idx(fonts, `<font>${f.b ? '<b/>' : ''}${f.i ? '<i/>' : ''}<sz val="${f.sz || 10.5}"/><color rgb="${f.color || 'FF1E2B2A'}"/><name val="Calibri"/><family val="2"/></font>`);
+      const fill = st.fill ? idx(fills, `<fill><patternFill patternType="solid"><fgColor rgb="${st.fill}"/><bgColor indexed="64"/></patternFill></fill>`) : 0;
+      const bd = st.border ? idx(borders, `<border><left/><right/><top${st.border.top ? ` style="${st.border.top}"><color rgb="${st.border.color || 'FFE4E0D7'}"/></top>` : '/>'}<bottom${st.border.bottom ? ` style="${st.border.bottom}"><color rgb="${st.border.color || 'FFE4E0D7'}"/></bottom>` : '/>'}<diagonal/></border>`) : 0;
+      let nf = 0;
+      if (st.fmt) { const builtIn = { '0%': 9 }[st.fmt]; nf = builtIn ?? 164 + idx(fmts, st.fmt); }
+      const al = st.align || {};
+      const align = `<alignment vertical="center"${al.h ? ` horizontal="${al.h}"` : (al.indent ? ' horizontal="left"' : '')}${al.indent ? ` indent="${al.indent}"` : ''}${al.wrap ? ' wrapText="1"' : ''}/>`;
+      xfs.push(`<xf numFmtId="${nf}" fontId="${font}" fillId="${fill}" borderId="${bd}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyNumberFormat="1" applyAlignment="1">${align}</xf>`);
+      cache.set(key, xfs.length - 1); return xfs.length - 1;
+    },
+    xml() {
+      return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
+        (fmts.length ? `<numFmts count="${fmts.length}">${fmts.map((f, i) => `<numFmt numFmtId="${164 + i}" formatCode="${XL.esc(f)}"/>`).join('')}</numFmts>` : '') +
+        `<fonts count="${fonts.length}">${fonts.join('')}</fonts><fills count="${fills.length}">${fills.join('')}</fills><borders count="${borders.length}">${borders.join('')}</borders>` +
+        `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${xfs.length}">${xfs.join('')}</cellXfs>` +
+        `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+    },
+  };
+}
+
+// Eén werkblad: rows = [{ cells: [{v, s}], ht, level }]
+function xlSheet(sh) {
+  const maxLevel = Math.max(0, ...sh.rows.map(r => r.level || 0));
+  const rows = sh.rows.map((r, ri) => {
+    const cells = r.cells.map((c, ci) => {
+      if (!c) return '';
+      const ref = XL.col(ci) + (ri + 1), s = c.s ? ` s="${c.s}"` : '';
+      if (c.v === null || c.v === undefined || c.v === '') return `<c r="${ref}"${s}/>`;
+      if (typeof c.v === 'number') return `<c r="${ref}"${s}><v>${c.v}</v></c>`;
+      return `<c r="${ref}"${s} t="inlineStr"><is><t xml:space="preserve">${XL.esc(c.v)}</t></is></c>`;
+    }).join('');
+    return `<row r="${ri + 1}"${r.ht ? ` ht="${r.ht}" customHeight="1"` : ''}${r.level ? ` outlineLevel="${r.level}"` : ''}>${cells}</row>`;
+  }).join('');
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+    `<sheetPr>${sh.tab ? `<tabColor rgb="${sh.tab}"/>` : ''}<outlinePr summaryBelow="0"/><pageSetUpPr fitToPage="1"/></sheetPr>` +
+    `<sheetViews><sheetView workbookViewId="0" showGridLines="0"${sh.first ? ' tabSelected="1"' : ''}>${sh.freeze ? `<pane ySplit="${sh.freeze}" topLeftCell="A${sh.freeze + 1}" activePane="bottomLeft" state="frozen"/>` : ''}</sheetView></sheetViews>` +
+    `<sheetFormatPr defaultRowHeight="18" customHeight="1"${maxLevel ? ` outlineLevelRow="${maxLevel}"` : ''}/>` +
+    `<cols>${sh.widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>` +
+    `<sheetData>${rows}</sheetData>` +
+    (sh.filter ? `<autoFilter ref="${sh.filter}"/>` : '') +
+    `<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="${sh.landscape ? 'landscape' : 'portrait'}" fitToWidth="1" fitToHeight="0"/></worksheet>`;
+}
+
+// Minimale zip-schrijver (zonder compressie) – genoeg voor een .xlsx
+function zipStore(files) {
+  const enc = new TextEncoder(), crcT = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; crcT[n] = c >>> 0; }
+  const crc = b => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = crcT[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  const parts = [], central = []; let off = 0;
+  const now = new Date(), dt = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xFFFF, dd = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xFFFF;
+  for (const [name, text] of files) {
+    const nb = enc.encode(name), data = enc.encode(text), c = crc(data);
+    const lh = new DataView(new ArrayBuffer(30));
+    [[0, 0x04034b50, 4], [4, 20, 2], [6, 0x0800, 2], [8, 0, 2], [10, dt, 2], [12, dd, 2], [14, c, 4], [18, data.length, 4], [22, data.length, 4], [26, nb.length, 2], [28, 0, 2]]
+      .forEach(([o, v, l]) => l === 4 ? lh.setUint32(o, v, true) : lh.setUint16(o, v, true));
+    const ch = new DataView(new ArrayBuffer(46));
+    [[0, 0x02014b50, 4], [4, 20, 2], [6, 20, 2], [8, 0x0800, 2], [10, 0, 2], [12, dt, 2], [14, dd, 2], [16, c, 4], [20, data.length, 4], [24, data.length, 4], [28, nb.length, 2], [30, 0, 2], [32, 0, 2], [34, 0, 2], [36, 0, 2], [38, 0, 4], [42, off, 4]]
+      .forEach(([o, v, l]) => l === 4 ? ch.setUint32(o, v, true) : ch.setUint16(o, v, true));
+    parts.push(new Uint8Array(lh.buffer), nb, data); central.push(new Uint8Array(ch.buffer), nb);
+    off += 30 + nb.length + data.length;
+  }
+  const csize = central.reduce((a, b) => a + b.length, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  [[0, 0x06054b50, 4], [4, 0, 2], [6, 0, 2], [8, files.length, 2], [10, files.length, 2], [12, csize, 4], [16, off, 4], [20, 0, 2]]
+    .forEach(([o, v, l]) => l === 4 ? end.setUint32(o, v, true) : end.setUint16(o, v, true));
+  return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+function xlWorkbook(sheets, st) {
+  const files = [
+    ['[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>`],
+    ['_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>`],
+    ['docProps/core.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>Tijdregistratie</dc:title><dc:creator>Tijdregistratie</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString().slice(0, 19)}Z</dcterms:created></cp:coreProperties>`],
+    ['xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView activeTab="0"/></bookViews><sheets>${sheets.map((sh, i) => `<sheet name="${XL.esc(sh.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets>${sheets.some(sh => sh.filter) ? `<definedNames>${sheets.map((sh, i) => sh.filter ? `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">'${XL.esc(sh.name)}'!$${sh.filter.replace(':', ':$').replace(/([A-Z]+)(\d+)/g, '$1$$$2')}</definedName>` : '').join('')}</definedNames>` : ''}</workbook>`],
+    ['xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+    ...sheets.map((sh, i) => [`xl/worksheets/sheet${i + 1}.xml`, xlSheet({ ...sh, first: i === 0 })]),
+    ['xl/styles.xml', st.xml()],
+  ];
+  return zipStore(files);
+}
+
+function exportXlsx(list, from, to) {
+  const st = xlStyles();
+  const INK = 'FF1E2B2A', SOFT = 'FF5F6A65', MUTED = 'FF929A94', LINE = 'FFE9E5DC';
+  const DUR = '[h]:mm', HRS = '0.00', DATE = 'dd-mm-yyyy', TIME = 'hh:mm';
+  const total = sum(list), billable = sum(list.filter(e => e.billable));
+  const toLabel = d => `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  const period = `${toLabel(from)} t/m ${toLabel(addDays(to, -1))}`;
+  const clientName = report.client ? clientById(report.client)?.name : 'Alle klanten';
+
+  /* ---------- Tabblad 1: Overzicht (cascade) ---------- */
+  const NCOL = 8; // A naam, B datum, C begin, D eind, E duur, F uren, G declarabel, H aandeel
+  const rows = [];
+  const line = (cells, opt = {}) => rows.push({ cells, ...opt });
+  const fillRow = (vals, base, special = {}) => Array.from({ length: NCOL }, (_, i) => ({ v: vals[i] ?? null, s: st.id({ ...base, ...(special[i] || {}) }) }));
+
+  line([{ v: 'Tijdregistratie', s: st.id({ font: { b: 1, sz: 18 } }) }], { ht: 30 });
+  line([{ v: `${period}  ·  ${clientName}`, s: st.id({ font: { sz: 11, color: SOFT } }) }], { ht: 20 });
+  const kL = st.id({ font: { sz: 9, color: MUTED, b: 1 } }), kV = st.id({ font: { sz: 15, b: 1 }, fmt: DUR, align: { h: 'left' } }), kN = st.id({ font: { sz: 15, b: 1 }, align: { h: 'left' } });
+  line([{ v: 'TOTAAL', s: kL }, { v: 'DECLARABEL', s: kL }, null, null, { v: 'REGISTRATIES', s: kL }], { ht: 22 });
+  line([{ v: XL.dur(total), s: kV }, { v: XL.dur(billable), s: kV }, null, null, { v: list.length, s: kN }], { ht: 26 });
+  const th = { font: { b: 1, sz: 9.5, color: 'FFFFFFFF' }, fill: INK };
+  line(fillRow(['KLANT › PROJECT › TAAK', 'DATUM', 'BEGIN', 'EIND', 'DUUR', 'UREN', 'DECLARABEL', 'AANDEEL'], th, { 0: { align: { indent: 1 } }, 1: { align: { h: 'center' } }, 2: { align: { h: 'center' } }, 3: { align: { h: 'center' } }, 4: { align: { h: 'right' } }, 5: { align: { h: 'right' } }, 6: { align: { h: 'right' } }, 7: { align: { h: 'right' } } }), { ht: 24 });
+
+  const pctOf = ms => total ? ms / total : 0;
+  const numCols = (ms, bill) => ({ 4: ms, 5: ms, 6: bill, 7: ms });
+  const numVals = (ms, bill) => [null, null, null, null, XL.dur(ms), Math.round(ms / 36e3) / 100, bill ? XL.dur(bill) : null, pctOf(ms)];
+  const numFmt = (base, extra = {}) => ({ 1: { ...base, fmt: DATE, align: { h: 'center' } }, 2: { ...base, fmt: TIME, align: { h: 'center' } }, 3: { ...base, fmt: TIME, align: { h: 'center' } }, 4: { ...base, fmt: DUR, ...extra }, 5: { ...base, fmt: HRS }, 6: { ...base, fmt: DUR }, 7: { ...base, fmt: '0%' } });
+
+  for (const cg of cascade(list, 'x')) {
+    const allC = cg.projects.flatMap(pg => pg.groups.flatMap(g => g.list));
+    const base = { font: { b: 1, sz: 12 }, fill: 'FFFFFFFF', border: { top: 'thin', color: LINE } };
+    const v = numVals(cg.ms, sum(allC.filter(e => e.billable))); v[0] = cg.c ? cg.c.name : 'Zonder klant';
+    line(fillRow(v, base, { 0: { ...base, align: { indent: 1 } }, ...numFmt(base) }), { ht: 26 });
+    for (const pg of cg.projects) {
+      const col = pg.p ? pg.p.color : '#a8a29e', pl = pg.groups.flatMap(g => g.list);
+      const pb = { font: { b: 1, sz: 11, color: XL.shade(col, .62) }, fill: XL.tint(col, .28), border: { top: 'thin', color: XL.tint(col, .45) } };
+      const pv = numVals(pg.ms, sum(pl.filter(e => e.billable))); pv[0] = pg.p ? pg.p.name : 'Geen project';
+      line(fillRow(pv, pb, { 0: { ...pb, align: { indent: 2 } }, ...numFmt(pb) }), { ht: 22, level: 1 });
+      for (const g of pg.groups) {
+        const t = taskById(g.list[0].task_id);
+        const tb = { font: { sz: 10.5, color: INK }, fill: XL.tint(col, .15), border: { top: 'thin', color: XL.tint(col, .28) } };
+        const tv = numVals(g.ms, sum(g.list.filter(e => e.billable)));
+        tv[0] = (t ? t.name : (g.list[0].description || '(geen omschrijving)')) + (g.list.length > 1 ? `  (${g.list.length}×)` : '');
+        line(fillRow(tv, tb, { 0: { ...tb, align: { indent: 4 } }, ...numFmt(tb, { font: { b: 1, sz: 10.5, color: INK } }) }), { ht: 20, level: 2 });
+        for (const e of [...g.list].sort((a, b) => new Date(a.start_time) - new Date(b.start_time))) {
+          const s0 = new Date(e.start_time), e0 = new Date(e.end_time), ms = dur(e);
+          const eb = { font: { sz: 10, color: SOFT }, fill: XL.tint(col, .07), border: { top: 'hair', color: XL.tint(col, .2) } };
+          const desc = [t && e.description ? e.description : (!t ? '' : ''), (e.tags || []).length ? `[${e.tags.join(', ')}]` : ''].filter(Boolean).join('  ');
+          const ev = [desc, XL.date(s0), XL.time(s0), XL.time(e0), XL.dur(ms), Math.round(ms / 36e3) / 100, e.billable ? XL.dur(ms) : null, null];
+          line(fillRow(ev, eb, { 0: { ...eb, align: { indent: 6 } }, ...numFmt(eb) }), { ht: 18, level: 3 });
+        }
+      }
+    }
+  }
+  const tot = { font: { b: 1, sz: 12 }, fill: 'FFF3F0E9', border: { top: 'medium', color: INK } };
+  const tv = numVals(total, billable); tv[0] = 'Totaal';
+  line(fillRow(tv, tot, { 0: { ...tot, align: { indent: 1 } }, ...numFmt(tot) }), { ht: 26 });
+
+  const overview = { name: 'Overzicht', rows, widths: [48, 12, 8, 8, 10, 9, 12, 10], freeze: 5, tab: 'FF0F7B6C', landscape: false };
+
+  /* ---------- Tabblad 2: Registraties (platte tabel met filters) ---------- */
+  const head = ['Datum', 'Begin', 'Eind', 'Duur', 'Uren', 'Klant', 'Project', 'Taak', 'Omschrijving', 'Tags', 'Declarabel'];
+  const r2 = [{ cells: head.map((h, i) => ({ v: h, s: st.id({ ...th, align: { h: i < 5 ? 'center' : 'left', indent: i >= 5 ? 1 : 0 } }) })), ht: 24 }];
+  for (const e of list) {
+    const s0 = new Date(e.start_time), e0 = new Date(e.end_time), p = projById(e.project_id), c = p && clientById(p.client_id), t = taskById(e.task_id), ms = dur(e);
+    const col = p ? p.color : '#a8a29e';
+    const b = { font: { sz: 10.5 }, fill: XL.tint(col, .1), border: { bottom: 'hair', color: XL.tint(col, .3) } };
+    const pb = { ...b, font: { sz: 10.5, b: 1, color: XL.shade(col, .62) }, fill: XL.tint(col, .25) };
+    r2.push({ ht: 19, cells: [
+      { v: XL.date(s0), s: st.id({ ...b, fmt: DATE, align: { h: 'center' } }) },
+      { v: XL.time(s0), s: st.id({ ...b, fmt: TIME, align: { h: 'center' } }) },
+      { v: XL.time(e0), s: st.id({ ...b, fmt: TIME, align: { h: 'center' } }) },
+      { v: XL.dur(ms), s: st.id({ ...b, fmt: DUR, align: { h: 'center' } }) },
+      { v: Math.round(ms / 36e3) / 100, s: st.id({ ...b, fmt: HRS, align: { h: 'center' } }) },
+      { v: c?.name || '', s: st.id({ ...b, align: { indent: 1 } }) },
+      { v: p?.name || '', s: st.id({ ...pb, align: { indent: 1 } }) },
+      { v: t?.name || '', s: st.id({ ...b, align: { indent: 1 } }) },
+      { v: e.description || '', s: st.id({ ...b, align: { indent: 1 } }) },
+      { v: (e.tags || []).join(', '), s: st.id({ ...b, align: { indent: 1 } }) },
+      { v: e.billable ? 'Ja' : 'Nee', s: st.id({ ...b, align: { indent: 1 } }) },
+    ] });
+  }
+  const flat = { name: 'Registraties', rows: r2, widths: [12, 8, 8, 9, 8, 22, 24, 24, 34, 18, 11], freeze: 1, filter: `A1:K${Math.max(2, r2.length)}`, tab: 'FFB7791F', landscape: true };
+
+  download(xlWorkbook([overview, flat], st), `tijdregistratie_${dayKey(from)}_${dayKey(addDays(to, -1))}.xlsx`);
+  toast('Excel-bestand gedownload');
 }
 
 /* ---------- Synchroniseren tussen werkplekken ---------- */
