@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tijdregistratie</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2303a9f4'/%3E%3Ccircle cx='16' cy='17' r='9' fill='none' stroke='white' stroke-width='3'/%3E%3Cpath d='M16 12v5l3 2' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='16' fill='%231e2b2a'/%3E%3Ccircle cx='16' cy='17' r='9' fill='none' stroke='%23f2c14e' stroke-width='3'/%3E%3Cpath d='M16 12v5l3 2' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
@@ -274,6 +276,115 @@
     table.t th, table.t td { padding: 10px; }
     .hide-m { display: none; }
   }
+
+  /* =================== Eigen thema =================== */
+  :root {
+    --bg: #f5f3ee; --card: #fff; --line: #ebe7df; --line2: #d9d4c8;
+    --text: #1e2b2a; --muted: #929a94; --soft: #5f6a65; --head: #efece5;
+    --accent: #0f7b6c; --accent-d: #0a5f53; --chip: #e2f0ea; --danger: #c2410c; --run: #e5f2ed;
+    --sun: #f2c14e; --shadow: 0 1px 2px rgba(30,43,42,.05), 0 6px 20px rgba(30,43,42,.06);
+    --r: 14px;
+  }
+  body { font-family: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); }
+  ::selection { background: #cfe7df; }
+
+  .top { background: var(--bg); border-bottom: 0; height: 68px; padding: 0 24px; gap: 22px; }
+  .logo { font-weight: 800; font-size: 19px; letter-spacing: -.4px; }
+  .logo i { background: var(--text); border-radius: 11px; width: 34px; height: 34px; }
+  .logo i svg { width: 22px; height: 22px; }
+  .tabs { display: flex; gap: 2px; background: #e9e5dc; padding: 4px; border-radius: 999px; }
+  .tabs button { display: flex; align-items: center; gap: 7px; padding: 7px 16px; border-radius: 999px; font-weight: 600; font-size: 14px; color: var(--soft); }
+  .tabs button svg { width: 17px; height: 17px; }
+  .tabs button.on { background: #fff; color: var(--text); box-shadow: 0 1px 3px rgba(30,43,42,.1); }
+  .tabs button:hover:not(.on) { color: var(--text); }
+  .linkbtn { color: var(--accent); font-weight: 600; }
+  .layout { display: block; min-height: calc(100vh - 68px); }
+  main { padding: 4px 24px 30px; margin: 0 auto; }
+
+  .timerbar { border: 0; border-radius: 18px; box-shadow: var(--shadow); min-height: 72px; padding-right: 8px; }
+  .timerbar .desc { font-size: 16px; height: 70px; padding: 0 22px; }
+  .timerbar .desc::placeholder { color: #a3aaa5; }
+  .sep { border-left: 0; margin: 0 2px; }
+  .projbtn { color: var(--accent); font-weight: 600; background: #f1f6f3; border-radius: 999px; height: 36px; padding: 0 14px; margin-right: 6px; }
+  .iconbtn { color: #a9b0ab; border-radius: 10px; width: 40px; }
+  .iconbtn:hover { color: var(--accent); background: #f1f6f3; }
+  .iconbtn.on { color: var(--accent); }
+  .iconbtn.half { color: #8cc4b8; }
+  .dollar { font-size: 19px; font-weight: 700; }
+  .clock { font-size: 24px; font-weight: 700; letter-spacing: .5px; }
+  .start { border-radius: 999px; height: 46px; padding: 0 22px 0 18px; display: inline-flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: 0; font-size: 15px; box-shadow: 0 3px 10px rgba(15,123,108,.28); }
+  .start svg { width: 15px; height: 15px; }
+  .start.stop { box-shadow: 0 3px 10px rgba(194,65,12,.28); }
+  .modes button.on { color: var(--accent); }
+  .manual input { border-color: var(--line2); border-radius: 8px; }
+
+  .tree, .day, .card, .stat, .emptystate { border: 0; border-radius: var(--r); box-shadow: var(--shadow); }
+  .day, .card { overflow: hidden; }
+  .tree { top: 80px; }
+  .treehd { background: #fff; border-bottom: 1px solid var(--line); padding: 14px 16px; }
+  .treehd b { font-weight: 800; }
+  .node { border-top-color: #f2efe9; }
+  .node:hover, .lhead:hover { background: #faf8f4; }
+  .node.client, .lclient { background: transparent; }
+  .node.client .name, .lclient .name { font-weight: 800; }
+  .node.task.running { background: var(--run); }
+  .node .today { color: var(--accent); font-weight: 600; }
+  .playbtn { border-radius: 10px; border: 0; background: #edf5f1; color: var(--accent); width: 30px; height: 30px; }
+  .playbtn:hover { background: var(--accent); color: #fff; }
+  .running .playbtn { background: var(--accent); color: #fff; box-shadow: 0 0 0 4px rgba(15,123,108,.15); }
+  .abtn:hover { background: #f1f6f3; color: var(--accent); }
+  .node.add input::placeholder { color: #b3b8b2; }
+
+  .weekhead .t { font-weight: 800; font-size: 17px; }
+  .weekhead .tot b { font-weight: 800; }
+  .dayhead { background: transparent; border-bottom: 1px solid var(--line); padding: 13px 16px; color: var(--text); font-weight: 700; font-size: 14.5px; }
+  .dayhead b { font-weight: 800; }
+  .dayhead span:last-child { color: var(--muted); font-weight: 500; font-size: 13px; }
+  .lhead, .row { border-top-color: #f2efe9; }
+  .cell { border-left: 0; }
+  .range { color: var(--muted); }
+  .dur { font-weight: 800; }
+  .row.sub { background: #fbfaf7; }
+  .row .main:hover .dtext { color: var(--accent); }
+  .rowbtn { border-radius: 8px; color: #b0b6b1; }
+  .rowbtn:hover { background: #f1f6f3; color: var(--accent); }
+  .count { background: #ece9e1; }
+  .chip { border-radius: 999px; background: var(--chip); color: #2a5a50; font-weight: 600; font-size: 12.5px; }
+  .more { border: 0; border-radius: 999px; background: #fff; box-shadow: var(--shadow); font-weight: 600; }
+
+  .pop { border: 0; border-radius: 14px; box-shadow: 0 10px 40px rgba(30,43,42,.18); overflow: hidden; }
+  .pop .opt:hover, .pop .opt.sel { background: #f3f6f4; }
+  .modal { border-radius: 18px; overflow: hidden; }
+  .modal h3 { font-weight: 800; }
+  .btn { border-radius: 10px; font-weight: 600; }
+  .btn.primary { box-shadow: 0 2px 8px rgba(15,123,108,.25); }
+  label.f input, label.f select, .inp { border-radius: 10px; }
+  .sw { border-radius: 8px; }
+  .stat small { font-weight: 600; letter-spacing: .3px; }
+  .stat div { font-weight: 800; }
+  .bar .track { background: #efece5; }
+  .daybars .b { border-radius: 6px 6px 2px 2px; }
+  .seg { border: 0; background: #ece9e1; padding: 3px; border-radius: 999px; gap: 2px; }
+  .seg button { border-radius: 999px; font-weight: 600; }
+  .seg button.on { background: #fff; color: var(--text); box-shadow: 0 1px 3px rgba(30,43,42,.1); }
+  table.t th { background: #fbfaf7; font-weight: 700; }
+  h1.page { font-weight: 800; letter-spacing: -.3px; }
+  .toast { border-radius: 999px; background: var(--text); }
+  .auth .card { border-radius: 18px; }
+
+  @media (max-width: 820px) {
+    .top { height: auto; flex-wrap: wrap; padding: 10px 12px; row-gap: 8px; gap: 10px; }
+    .tabs { order: 3; width: 100%; }
+    .tabs button { flex: 1; justify-content: center; }
+    main { padding: 4px 12px 24px; }
+    .timerbar .desc { height: 56px; }
+    .clock { font-size: 18px; }
+    .start { height: 40px; padding: 0 14px 0 12px; }
+    .projbtn { max-width: 112px; padding: 0 10px; margin-right: 2px; }
+    .iconbtn { width: 32px; }
+    .clock { font-size: 16px; padding: 0 6px; letter-spacing: 0; }
+    .tree { position: static; }
+  }
 </style>
 </head>
 <body>
@@ -309,7 +420,7 @@ const dur = e => new Date(e.end_time) - new Date(e.start_time);
 const sum = list => list.reduce((a, e) => a + dur(e), 0);
 const byName = (a, b) => a.name.localeCompare(b.name, 'nl', { sensitivity: 'base' });
 const sortByStart = () => entries.sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
-const COLORS = ['#03a9f4', '#9c27b0', '#ff9800', '#4caf50', '#e91e63', '#3f51b5', '#009688', '#795548', '#f44336', '#607d8b'];
+const COLORS = ['#0f7b6c', '#c2410c', '#6d28d9', '#b7791f', '#0369a1', '#be185d', '#4d7c0f', '#0891b2', '#9a3412', '#57534e'];
 const parseTags = s => [...new Set(String(s).split(',').map(t => t.trim()).filter(Boolean))];
 const at = (date, time) => { const [y, mo, d] = date.split('-').map(Number); const [h, mi] = time.split(':').map(Number); return new Date(y, mo - 1, d, h, mi); };
 
@@ -318,6 +429,7 @@ const I = {
   list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>',
   tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/></svg>',
   play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l10.5-6.5z"/></svg>',
+  stopi: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>',
   pause: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5.5" width="4" height="13" rx="1"/><rect x="13.5" y="5.5" width="4" height="13" rx="1"/></svg>',
   playo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 5l12 7-12 7z"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
@@ -326,8 +438,8 @@ const I = {
   undo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5v5h5"/><path d="M5.6 15a7 7 0 1 0 .9-7.4L4 10"/></svg>',
   caret: '<svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6"/></svg>',
   plus: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>',
-  report: '<svg viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="1.6"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>',
-  timer: '<svg viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  report: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>',
+  timer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
 };
 
 /* ---------- Status ---------- */
@@ -383,7 +495,7 @@ function getConfig() {
   if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY) return CONFIG;
   try { return JSON.parse(localStorage.getItem('tt_config') || 'null'); } catch { return null; }
 }
-const logoHtml = `<div class="logo"><i>${I.clock}</i>Tijdregistratie</div>`;
+const logoHtml = `<div class="logo"><i><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="13" r="7.5" stroke="#f2c14e"/><path d="M12 9.5V13l2.5 1.5M10 3h4" stroke="#fff"/></svg></i>Tijdregistratie</div>`;
 
 async function init() {
   const cfg = getConfig();
@@ -552,24 +664,24 @@ function renderShell() {
   $('#app').innerHTML = `
   <header class="top">
     ${logoHtml}
+    <nav class="tabs">
+      <button data-v="tracker">${I.timer}Tijd</button>
+      <button data-v="reports">${I.report}Rapporten</button>
+    </nav>
     <div class="sp"></div>
     <span class="who">${esc(user.email)}</span>
     <button class="linkbtn" id="logout">Uitloggen</button>
   </header>
   <div class="layout">
-    <nav class="side">
-      <button data-v="tracker">${I.timer}Tijd</button>
-      <button data-v="reports">${I.report}Rapporten</button>
-    </nav>
     <main id="main"></main>
   </div>`;
   $('#logout').onclick = async () => { await sb.auth.signOut(); };
-  $$('nav.side button').forEach(b => b.onclick = () => { view = b.dataset.v; render(); });
+  $$('.tabs button').forEach(b => b.onclick = () => { view = b.dataset.v; render(); });
 }
 
 function render() {
   if (!$('#main')) return;
-  $$('nav.side button').forEach(b => b.classList.toggle('on', b.dataset.v === view));
+  $$('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === view));
   stopTick();
   if (view === 'tracker') renderTracker(); else renderReports();
 }
@@ -614,7 +726,7 @@ function renderTimer() {
     <div class="sep"></div>
     <button class="iconbtn ${c.tags?.length ? 'on' : ''}" id="tagBtn" title="${esc((c.tags || []).join(', ') || 'Tags')}">${I.tag}</button>
     <div class="sep"></div>
-    <button class="iconbtn dollar ${c.billable ? 'on' : ''}" id="billBtn" title="Declarabel">$</button>
+    <button class="iconbtn dollar ${c.billable ? 'on' : ''}" id="billBtn" title="Declarabel">€</button>
     <div class="sep"></div>
     ${isManual ? `
       <div class="manual">
@@ -623,9 +735,9 @@ function renderTimer() {
         <input type="date" id="mD" value="${manual.date}" aria-label="Datum">
         <span class="mdur" id="mDur"></span>
       </div>
-      <button class="start" id="goBtn">TOEVOEGEN</button>`
+      <button class="start" id="goBtn">${I.plus.replace('width="18" height="18" ', '')}Toevoegen</button>`
     : `<div class="clock" id="clock">00:00:00</div>
-      <button class="start ${running ? 'stop' : ''}" id="goBtn">${running ? 'STOP' : 'START'}</button>`}
+      <button class="start ${running ? 'stop' : ''}" id="goBtn">${running ? I.stopi + 'Stop' : I.play + 'Start'}</button>`}
     <div class="modes">
       <button data-m="timer" class="${!isManual ? 'on' : ''}" title="Timer">${I.clock}</button>
       <button data-m="manual" class="${isManual ? 'on' : ''}" title="Handmatig invoeren">${I.list}</button>
@@ -968,7 +1080,7 @@ function groupHtml(g) {
     <div class="main" data-act="xg" title="${open ? 'Inklappen' : 'Losse registraties tonen'}">
       ${I.caret}<span class="dtext ${t || g.list[0].description ? '' : 'empty'}">${title}</span><span class="count">${g.list.length}</span>
     </div>
-    <div class="cell bill"><button class="iconbtn dollar ${allBill ? 'on' : someBill ? 'half' : ''}" data-act="gbill" title="Declarabel (alle ${g.list.length})">$</button></div>
+    <div class="cell bill"><button class="iconbtn dollar ${allBill ? 'on' : someBill ? 'half' : ''}" data-act="gbill" title="Declarabel (alle ${g.list.length})">€</button></div>
     <div class="cell range">${fmtTime(first)} – ${fmtTime(last)}</div>
     <div class="cell dur">${fmtDur(g.ms)}</div>
     <div class="cell btns">
@@ -991,7 +1103,7 @@ function rowHtml(e, depth = 2, sub = false) {
       ${sub ? '' : '<span class="caretpad"></span>'}<span class="dtext ${empty ? 'empty' : ''}">${title}</span>
       ${e.tags?.length ? `<span class="tags">${e.tags.map(x => `<span class="chip">${esc(x)}</span>`).join('')}</span>` : ''}
     </div>
-    <div class="cell bill"><button class="iconbtn dollar ${e.billable ? 'on' : ''}" data-act="bill" title="Declarabel">$</button></div>
+    <div class="cell bill"><button class="iconbtn dollar ${e.billable ? 'on' : ''}" data-act="bill" title="Declarabel">€</button></div>
     <div class="cell range">${fmtTime(s)} – ${fmtTime(en)}</div>
     <div class="cell dur">${fmtDur(en - s)}</div>
     <div class="cell btns">
