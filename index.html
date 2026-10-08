@@ -385,6 +385,44 @@
     .clock { font-size: 16px; padding: 0 6px; letter-spacing: 0; }
     .tree { position: static; }
   }
+
+  /* =================== Logo's en projectkleuren =================== */
+  .clogo { width: 24px; height: 24px; border-radius: 7px; object-fit: contain; background: #fff; box-shadow: 0 0 0 1px var(--line); flex-shrink: 0; display: inline-block; }
+  .clogo.ini { display: inline-grid; place-items: center; font-size: 10px; font-weight: 800; color: #fff; background: var(--text); box-shadow: none; letter-spacing: .3px; }
+  .clogo.lg { width: 60px; height: 60px; border-radius: 14px; font-size: 20px; }
+  .clogo.sm { width: 18px; height: 18px; border-radius: 5px; font-size: 7.5px; vertical-align: -4px; margin-right: 7px; }
+  [data-act="edit-c"] .clogo { cursor: pointer; }
+  .logoedit { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: var(--text); }
+  .logoedit .btn { cursor: pointer; }
+  .pop .grp { display: flex; align-items: center; }
+
+  .swc { position: relative; overflow: hidden; cursor: pointer; background: conic-gradient(#e53935, #fbc02d, #43a047, #039be5, #8e24aa, #e53935); }
+  .swc input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .tintprev { margin-top: 6px; border-radius: 10px; overflow: hidden; font-size: 13px; color: var(--text); box-shadow: 0 0 0 1px var(--line); }
+  .tintprev .pp { padding: 7px 12px; font-weight: 700; background: color-mix(in srgb, var(--c) 28%, #fff); color: color-mix(in srgb, var(--c) 65%, #000); }
+  .tintprev .pt { padding: 6px 12px 6px 28px; background: color-mix(in srgb, var(--c) 15%, #fff); border-top: 1px solid color-mix(in srgb, var(--c) 26%, #fff); }
+
+  /* Projectregel: duidelijke tint, taken eronder: lichte tint */
+  .node.project, .lproject { background: color-mix(in srgb, var(--c) 28%, #fff); border-top-color: color-mix(in srgb, var(--c) 40%, #fff); }
+  .node.project:hover, .lproject:hover { background: color-mix(in srgb, var(--c) 34%, #fff); }
+  .node.project .name, .lproject .name { color: color-mix(in srgb, var(--c) 65%, #000); font-weight: 700; }
+  .node.project .tt, .lproject .ltot, .node.project .caret, .lproject .caret { color: color-mix(in srgb, var(--c) 55%, #000); }
+  .node.project .today { color: color-mix(in srgb, var(--c) 55%, #000) !important; }
+  .node.tint, .row.tint { background: color-mix(in srgb, var(--c) 15%, #fff); border-top-color: color-mix(in srgb, var(--c) 26%, #fff); }
+  .node.tint:hover, .row.tint:hover { background: color-mix(in srgb, var(--c) 20%, #fff); }
+  .row.tint.sub { background: color-mix(in srgb, var(--c) 8%, #fff); border-top-color: color-mix(in srgb, var(--c) 18%, #fff); }
+  .node.tint .tt, .row.tint .range, .node.tint .abtn, .row.tint .rowbtn { color: color-mix(in srgb, var(--c) 40%, #555); }
+  .node.tint .today { color: color-mix(in srgb, var(--c) 70%, #000); }
+  .node.tint .playbtn { background: #fff; color: color-mix(in srgb, var(--c) 85%, #000); }
+  .node.tint .playbtn:hover, .node.tint.running .playbtn { background: var(--c); color: #fff; }
+  .node.task.tint.running { background: color-mix(in srgb, var(--c) 34%, #fff); }
+  .node.task.tint.running .name { color: color-mix(in srgb, var(--c) 70%, #000); }
+  .node.tint.running .playbtn { box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 25%, transparent); }
+  .node.tint .abtn:hover, .row.tint .rowbtn:hover { background: rgba(255,255,255,.7); color: var(--text); }
+  .node.add.tint input::placeholder, .node.showmore.tint, .node.add.tint .plus { color: color-mix(in srgb, var(--c) 45%, #777); }
+  .row.tint .count { background: rgba(255,255,255,.75); }
+  .row.tint .iconbtn:not(.on):not(.half) { color: color-mix(in srgb, var(--c) 30%, #999); }
+  .row.tint .iconbtn:hover { background: rgba(255,255,255,.7); }
 </style>
 </head>
 <body>
@@ -441,6 +479,29 @@ const I = {
   report: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>',
   timer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
 };
+
+/* ---------- Klantlogo's ---------- */
+const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+const safeLogo = l => typeof l === 'string' && /^data:image\//.test(l) ? l : null;
+const logoBadge = (c, size = '') => c && safeLogo(c.logo)
+  ? `<img class="clogo ${size}" src="${esc(c.logo)}" alt="">`
+  : `<span class="clogo ini ${size}">${esc(initials(c?.name))}</span>`;
+// Verklein een gekozen afbeelding tot max. 160px, zodat hij klein in de database past
+function resizeImage(file, max = 160) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const iw = img.naturalWidth || max, ih = img.naturalHeight || max, r = Math.min(1, max / Math.max(iw, ih));
+      const w = Math.max(1, Math.round(iw * r)), h = Math.max(1, Math.round(ih * r));
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(img, 0, 0, w, h); URL.revokeObjectURL(url);
+      let d = cv.toDataURL('image/webp', 0.9); if (!d.startsWith('data:image/webp')) d = cv.toDataURL('image/png');
+      res(d);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('Deze afbeelding kon niet worden gelezen.')); };
+    img.src = url;
+  });
+}
 
 /* ---------- Status ---------- */
 let sb, user;
@@ -776,10 +837,10 @@ function renderTree() {
   const runP = running?.project_id, runT = running?.task_id;
   const runC = runP ? (projById(runP)?.client_id || 'none') : null;
 
-  const taskHtml = t => {
+  const taskHtml = (t, p) => {
     const isRun = runT === t.id;
     const today = todayByTask[t.id] || 0;
-    return `<div class="node task ${isRun ? 'running' : ''} ${t.done ? 'done' : ''}" style="--d:2" data-act="play" data-id="${t.id}" title="${isRun ? 'Klik om te pauzeren' : 'Klik om tijd bij te houden'}">
+    return `<div class="node task tint ${isRun ? 'running' : ''} ${t.done ? 'done' : ''}" style="--d:2;--c:${esc(p.color)}" data-act="play" data-id="${t.id}" title="${isRun ? 'Klik om te pauzeren' : 'Klik om tijd bij te houden'}">
       <button class="playbtn" tabindex="-1" aria-label="${isRun ? 'Pauzeren' : 'Starten'}">${isRun ? I.pause : I.play}</button>
       <span class="name">${esc(t.name)}</span>
       ${(today || isRun) ? liveSpan('today', today, isRun, 'vandaag ') : ''}
@@ -803,12 +864,12 @@ function renderTree() {
       <span class="acts"><button class="abtn" data-act="edit-p" data-id="${p.id}" title="Project bewerken">${I.edit}</button></span>
     </div>`;
     if (open) {
-      h += active.map(taskHtml).join('');
+      h += active.map(t => taskHtml(t, p)).join('');
       if (done.length) {
-        if (showDone) h += done.map(taskHtml).join('');
-        h += `<div class="node showmore" style="--d:2" data-act="showdone" data-id="${p.id}"><span style="width:30px"></span>${showDone ? 'Afgeronde taken verbergen' : `${done.length} afgeronde ${done.length === 1 ? 'taak' : 'taken'} tonen`}</div>`;
+        if (showDone) h += done.map(t => taskHtml(t, p)).join('');
+        h += `<div class="node showmore tint" style="--d:2;--c:${esc(p.color)}" data-act="showdone" data-id="${p.id}"><span style="width:30px"></span>${showDone ? 'Afgeronde taken verbergen' : `${done.length} afgeronde ${done.length === 1 ? 'taak' : 'taken'} tonen`}</div>`;
       }
-      h += `<div class="node add task" style="--d:2"><span class="plus">+</span><input data-add="task" data-parent="${p.id}" placeholder="Taak toevoegen…" enterkeyhint="done"></div>`;
+      h += `<div class="node add task tint" style="--d:2;--c:${esc(p.color)}"><span class="plus">+</span><input data-add="task" data-parent="${p.id}" placeholder="Taak toevoegen…" enterkeyhint="done"></div>`;
     }
     return h;
   };
@@ -817,7 +878,7 @@ function renderTree() {
     const id = c ? c.id : 'none', k = 'c:' + id, open = isOpen(k);
     const total = plist.reduce((a, p) => a + (projTot[p.id] || 0), 0);
     let h = `<div class="node client ${open ? 'open' : ''} ${c?.archived ? 'archived' : ''}" style="--d:0" data-act="toggle" data-k="${k}">
-      ${I.caret}<span class="name">${c ? esc(c.name) : '<span style="color:var(--soft);font-weight:500">Zonder klant</span>'}</span>
+      ${I.caret}${c ? `<span data-act="edit-c" data-id="${c.id}" title="Logo en naam wijzigen">${logoBadge(c)}</span>` : ''}<span class="name">${c ? esc(c.name) : '<span style="color:var(--soft);font-weight:500">Zonder klant</span>'}</span>
       ${liveSpan('tt', total, runC === id)}
       <span class="acts">${c ? `<button class="abtn" data-act="edit-c" data-id="${c.id}" title="Klant bewerken">${I.edit}</button>` : ''}</span>
     </div>`;
@@ -903,9 +964,18 @@ function editNode(kind, obj) {
     <h3>${title}</h3>
     <div class="body">
       <label class="f">Naam<input id="nN" value="${esc(obj.name)}" required></label>
+      ${kind === 'client' ? `
+        <div class="f" style="display:grid;gap:6px;font-size:13px;color:var(--soft)">Logo
+          <div class="logoedit"><span id="nLogo">${logoBadge(obj, 'lg')}</span>
+            <label class="btn">Afbeelding kiezen…<input type="file" accept="image/*" id="nLF" hidden></label>
+            <button type="button" class="btn ${safeLogo(obj.logo) ? '' : 'hidden'}" id="nLR">Weghalen</button>
+          </div>
+          <span style="font-size:12px;color:var(--muted)">PNG, JPG of SVG. Wordt automatisch verkleind.</span>
+        </div>` : ''}
       ${kind === 'project' ? `
         <label class="f">Klant<select id="nC">${clientOptions(obj.client_id)}</select></label>
-        <div class="f" style="display:grid;gap:6px;font-size:13px;color:var(--soft)">Kleur<div class="swatches">${COLORS.map(c => `<button type="button" class="sw ${c === color ? 'on' : ''}" data-c="${c}" style="background:${c}"></button>`).join('')}</div></div>` : ''}
+        <div class="f" style="display:grid;gap:6px;font-size:13px;color:var(--soft)">Kleur<div class="swatches">${COLORS.map(c => `<button type="button" class="sw ${c === color ? 'on' : ''}" data-c="${c}" style="background:${c}"></button>`).join('')}<label class="sw swc ${COLORS.includes(color) ? '' : 'on'}" title="Eigen kleur kiezen" style="${COLORS.includes(color) ? '' : `background:${esc(color)}`}"><input type="color" id="nCol" value="${esc(/^#[0-9a-f]{6}$/i.test(color) ? color : '#0f7b6c')}"></label></div>
+          <div class="tintprev" id="nPrev" style="--c:${esc(color)}"><div class="pp">${esc(obj.name)}</div><div class="pt">Taak</div><div class="pt">Taak</div></div></div>` : ''}
       ${kind === 'task' ? `<label class="f">Project<select id="nP">${projectOptions(obj.project_id, false)}</select></label>
         <label class="check"><input type="checkbox" id="nD" ${obj.done ? 'checked' : ''}> Afgerond</label>` : ''}
       ${kind !== 'task' ? `<label class="check"><input type="checkbox" id="nA" ${obj.archived ? 'checked' : ''}> Gearchiveerd (verbergen in het overzicht)</label>` : ''}
@@ -917,7 +987,21 @@ function editNode(kind, obj) {
     </div></form>`);
   const nN = $('#nN', bd); nN.focus(); nN.select();
   $('#nX', bd).onclick = close;
-  $$('.sw', bd).forEach(b => b.onclick = () => { color = b.dataset.c; $$('.sw', bd).forEach(s => s.classList.toggle('on', s === b)); });
+  const setColor = (c, el) => { color = c; $$('.sw', bd).forEach(s => s.classList.toggle('on', s === el)); const prev = $('#nPrev', bd); if (prev) prev.style.setProperty('--c', c); };
+  $$('button.sw', bd).forEach(b => b.onclick = () => setColor(b.dataset.c, b));
+  const nCol = $('#nCol', bd);
+  if (nCol) nCol.oninput = () => { const lab = nCol.closest('.swc'); lab.style.background = nCol.value; setColor(nCol.value, lab); };
+  let logo = obj.logo || null;
+  const nLF = $('#nLF', bd);
+  if (nLF) {
+    nLF.onchange = async () => {
+      const f = nLF.files[0]; if (!f) return;
+      try { logo = await resizeImage(f); $('#nLogo', bd).innerHTML = logoBadge({ name: obj.name, logo }, 'lg'); $('#nLR', bd).classList.remove('hidden'); }
+      catch (err) { toast(err.message); }
+      nLF.value = '';
+    };
+    $('#nLR', bd).onclick = () => { logo = null; $('#nLogo', bd).innerHTML = logoBadge({ name: nN.value }, 'lg'); $('#nLR', bd).classList.add('hidden'); };
+  }
   const table = { client: 'clients', project: 'projects', task: 'tasks' }[kind];
 
   $('form', bd).onsubmit = async ev => {
@@ -925,6 +1009,7 @@ function editNode(kind, obj) {
     const upd = { name: nN.value.trim() };
     if (!upd.name) return;
     if (kind === 'project') { upd.client_id = $('#nC', bd).value || null; upd.color = color; }
+    if (kind === 'client') upd.logo = logo;
     if (kind === 'task') { upd.project_id = $('#nP', bd).value; upd.done = $('#nD', bd).checked; }
     if (kind !== 'task') upd.archived = $('#nA', bd).checked;
     const { error } = await sb.from(table).update(upd).eq('id', obj.id);
@@ -1023,7 +1108,7 @@ function renderList() {
       html += `<div class="day"><div class="dayhead"><span>${dl}</span><span>Totaal: <b>${fmtDur(sum(d.list))}</b></span></div>`;
       for (const cg of cascade(d.list, dk)) {
         const ck = `${dk}|c|${cg.c ? cg.c.id : '-'}`, cOpen = !listClosed.has(ck);
-        html += `<div class="lhead lclient ${cOpen ? 'open' : ''}" data-act="xh" data-k="${esc(ck)}" style="--d:0">${I.caret}<span class="name">${cg.c ? esc(cg.c.name) : 'Zonder klant'}</span><span class="ltot">${fmtDur(cg.ms)}</span></div>`;
+        html += `<div class="lhead lclient ${cOpen ? 'open' : ''}" data-act="xh" data-k="${esc(ck)}" style="--d:0">${I.caret}${cg.c ? logoBadge(cg.c) : ''}<span class="name">${cg.c ? esc(cg.c.name) : 'Zonder klant'}</span><span class="ltot">${fmtDur(cg.ms)}</span></div>`;
         if (!cOpen) continue;
         for (const pg of cg.projects) {
           const pk = `${dk}|p|${pg.p ? pg.p.id : '-'}|${cg.c ? cg.c.id : '-'}`, pOpen = !listClosed.has(pk);
@@ -1076,7 +1161,8 @@ function groupHtml(g) {
   const title = t ? esc(t.name) : esc(g.list[0].description || '(geen omschrijving)');
   const allBill = g.list.every(e => e.billable), someBill = g.list.some(e => e.billable);
   const open = listOpen.has(g.key);
-  return `<div class="row grp ${open ? 'open' : ''}" data-g="${esc(g.key)}" style="--d:2">
+  const pc = projById(g.list[0].project_id)?.color;
+  return `<div class="row grp ${pc ? 'tint' : ''} ${open ? 'open' : ''}" data-g="${esc(g.key)}" style="--d:2${pc ? `;--c:${esc(pc)}` : ''}">
     <div class="main" data-act="xg" title="${open ? 'Inklappen' : 'Losse registraties tonen'}">
       ${I.caret}<span class="dtext ${t || g.list[0].description ? '' : 'empty'}">${title}</span><span class="count">${g.list.length}</span>
     </div>
@@ -1098,7 +1184,8 @@ function rowHtml(e, depth = 2, sub = false) {
   if (sub) title = e.description ? esc(e.description) : `<span class="empty">geen omschrijving</span>`;
   else title = entryTitle(e);
   const empty = !sub && !e.description && !t;
-  return `<div class="row ${sub ? 'sub' : ''}" data-id="${e.id}" style="--d:${depth}">
+  const pc = projById(e.project_id)?.color;
+  return `<div class="row ${sub ? 'sub' : ''} ${pc ? 'tint' : ''}" data-id="${e.id}" style="--d:${depth}${pc ? `;--c:${esc(pc)}` : ''}">
     <div class="main" data-act="edit">
       ${sub ? '' : '<span class="caretpad"></span>'}<span class="dtext ${empty ? 'empty' : ''}">${title}</span>
       ${e.tags?.length ? `<span class="tags">${e.tags.map(x => `<span class="chip">${esc(x)}</span>`).join('')}</span>` : ''}
@@ -1201,7 +1288,7 @@ function workPicker(anchor, c, onPick) {
         gh += `<button class="opt ${p.id === c.project_id && !c.task_id ? 'sel' : ''}" data-p="${p.id}"><span class="dot" style="background:${esc(p.color)}"></span>${esc(p.name)}</button>`;
         gh += tm.map(t => `<button class="opt sub ${t.id === c.task_id ? 'sel' : ''}" data-p="${p.id}" data-t="${t.id}">${esc(t.name)}</button>`).join('');
       }
-      if (gh) h += `<div class="grp">${esc(cl ? cl.name : 'Zonder klant')}</div>` + gh;
+      if (gh) h += `<div class="grp">${cl ? logoBadge(cl, 'sm') : ''}${esc(cl ? cl.name : 'Zonder klant')}</div>` + gh;
     }
     list.innerHTML = h || '<div class="opt" style="color:#999">Niets gevonden</div>';
   };
@@ -1272,7 +1359,7 @@ async function renderReports() {
 
   const total = sum(list), billable = sum(list.filter(e => e.billable));
   const G = {
-    client: e => { const c = clientById(projById(e.project_id)?.client_id); return c ? [c.id, esc(c.name), '#607d8b'] : ['', null, '#bbb']; },
+    client: e => { const c = clientById(projById(e.project_id)?.client_id); return c ? [c.id, logoBadge(c, 'sm') + esc(c.name), '#57534e'] : ['', null, '#bbb']; },
     project: e => { const p = projById(e.project_id), c = p && clientById(p.client_id); return p ? [p.id, esc(p.name) + (c ? ` <small style="color:var(--muted)">· ${esc(c.name)}</small>` : ''), p.color] : ['', null, '#bbb']; },
     task: e => { const t = taskById(e.task_id), p = projById(e.project_id); return t ? [t.id, esc(t.name) + ` <small style="color:var(--muted)">· ${esc(p?.name || '')}</small>`, p?.color || '#bbb'] : ['', null, '#bbb']; },
   };
