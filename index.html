@@ -133,6 +133,28 @@
   .rowbtn svg { width: 17px; height: 17px; }
   .row .cell.btns { gap: 0; padding: 0 6px; }
   .row .cell.bill { padding: 0 4px; }
+  /* Cascade in de tijdlijn */
+  .lhead { --d: 0; display: flex; align-items: center; gap: 8px; padding: 0 16px 0 calc(12px + var(--d) * 22px); min-height: 38px; border-top: 1px solid var(--line); cursor: pointer; user-select: none; }
+  .lhead:hover { background: #f7fafb; }
+  .lhead.open > .caret, .row.grp.open .caret { transform: rotate(90deg); }
+  .lhead .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lhead .ltot { font-variant-numeric: tabular-nums; color: var(--soft); font-size: 14px; padding-right: 82px; }
+  .lclient { background: #fafcfd; font-weight: 600; font-size: 14.5px; }
+  .dayhead + .lclient { border-top: 0; }
+  .lproject { font-size: 14.5px; }
+  .lproject .name::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c); margin-right: 8px; vertical-align: 1px; }
+  .lproject .name { color: var(--c); }
+  .row { --d: 2; }
+  .row .main { padding-left: calc(12px + var(--d) * 22px); }
+  .row .main .caret { margin-right: -2px; }
+  .caretpad { width: 16px; flex-shrink: 0; }
+  .row.grp .main { flex-wrap: nowrap; }
+  .count { background: #eef2f5; color: var(--soft); border-radius: 10px; font-size: 12px; padding: 1px 8px; font-variant-numeric: tabular-nums; }
+  .row.sub { background: #fbfcfd; min-height: 48px; }
+  .row.sub .dtext { font-size: 14px; color: var(--soft); }
+  .row.sub .dur { font-weight: 500; font-size: 15px; color: var(--soft); }
+  .dtext .empty, .dtext.empty { color: var(--muted); }
+  .iconbtn.half { color: #8fd3f5; }
   .more { display: block; margin: 8px auto 30px; padding: 10px 20px; border: 1px solid var(--line2); background: #fff; color: var(--soft); }
   .emptystate { text-align: center; color: var(--muted); padding: 50px 20px; background: #fff; border: 1px solid var(--line); }
 
@@ -232,6 +254,11 @@
     .manual input[type=time] { flex: 1 1 38%; min-width: 0; }
     .manual input[type=date] { flex: 1 1 70%; }
     .manual + .start { margin-left: auto; }
+    .lhead { padding-left: calc(10px + var(--d) * 14px); }
+    .lhead .ltot { padding-right: 0; }
+    .row .main { padding-left: calc(10px + var(--d) * 14px) !important; }
+    .row.grp .main, .row.sub .main { flex-wrap: wrap; }
+    .row .cell.bill { margin-left: calc(var(--d) * 14px); }
     .row { flex-wrap: wrap; }
     .row .main { flex-basis: 100%; padding: 12px 14px 0; }
     .row .cell { margin: 4px 0 10px; padding: 0 8px; }
@@ -826,6 +853,37 @@ function entryTitle(e) {
   return esc(e.description || '(geen omschrijving)');
 }
 
+// Open/dicht-status van groepen in de tijdlijn (alleen voor deze sessie)
+const listClosed = new Set();   // klant- en projectkoppen die zijn dichtgeklapt
+const listOpen = new Set();     // taakgroepen die zijn opengeklapt
+let listGroups = new Map();
+
+// Groepeer de registraties van één dag als klant › project › taak
+function cascade(list, dk) {
+  const cMap = new Map();
+  for (const e of list) {
+    const p = projById(e.project_id), c = p && clientById(p.client_id);
+    const ck = c ? c.id : '-', pk = p ? p.id : '-';
+    const gk = e.task_id && taskById(e.task_id) ? 't:' + e.task_id : 'd:' + (e.description || '').trim().toLowerCase();
+    if (!cMap.has(ck)) cMap.set(ck, { c, projects: new Map() });
+    const cg = cMap.get(ck);
+    if (!cg.projects.has(pk)) cg.projects.set(pk, { p, groups: new Map() });
+    const pg = cg.projects.get(pk);
+    const key = `${dk}|${pk}|${gk}`;
+    if (!pg.groups.has(key)) pg.groups.set(key, { key, list: [] });
+    pg.groups.get(key).list.push(e);
+  }
+  // Sorteer: grootste tijd bovenaan; klanten met naam vóór "zonder klant"
+  const tot = arr => arr.reduce((a, x) => a + x, 0);
+  return [...cMap.values()].map(cg => {
+    const projects = [...cg.projects.values()].map(pg => {
+      const groups = [...pg.groups.values()].map(g => ({ ...g, ms: sum(g.list) })).sort((a, b) => b.ms - a.ms);
+      return { ...pg, groups, ms: tot(groups.map(g => g.ms)) };
+    }).sort((a, b) => (!a.p) - (!b.p) || b.ms - a.ms);
+    return { ...cg, projects, ms: tot(projects.map(p => p.ms)) };
+  }).sort((a, b) => (!a.c) - (!b.c) || b.ms - a.ms);
+}
+
 function renderList() {
   const el = $('#list'); if (!el) return;
   if (!entries.length) { el.innerHTML = `<div class="emptystate">Nog geen registraties deze week. Klik op ▶ bij een taak links, of typ hierboven waar je aan werkt en klik op START.</div><button class="more" id="more">Eerdere weken laden</button>`; $('#more').onclick = loadMore; return; }
@@ -838,6 +896,7 @@ function renderList() {
     if (!w.days.has(dk)) w.days.set(dk, { date: startOfDay(d), list: [] });
     w.days.get(dk).list.push(e);
   }
+  listGroups = new Map();
   let html = '';
   for (const w of weeks.values()) {
     const all = [...w.days.values()].flatMap(d => d.list);
@@ -846,10 +905,26 @@ function renderList() {
     const label = diff === 0 ? 'Deze week' : diff === 1 ? 'Vorige week' : `${w.start.getDate()} ${MONTHS[w.start.getMonth()]} – ${end.getDate()} ${MONTHS[end.getMonth()]}`;
     html += `<div class="weekhead ${html ? 'next' : ''}"><span class="t">${label}</span><span class="tot">Weektotaal: <b>${fmtDur(sum(all))}</b></span></div>`;
     for (const d of w.days.values()) {
+      const dk = dayKey(d.date);
       const dd = Math.round((today - d.date) / 864e5);
       const dl = dd === 0 ? 'Vandaag' : dd === 1 ? 'Gisteren' : fmtDate(d.date);
       html += `<div class="day"><div class="dayhead"><span>${dl}</span><span>Totaal: <b>${fmtDur(sum(d.list))}</b></span></div>`;
-      for (const e of d.list) html += rowHtml(e);
+      for (const cg of cascade(d.list, dk)) {
+        const ck = `${dk}|c|${cg.c ? cg.c.id : '-'}`, cOpen = !listClosed.has(ck);
+        html += `<div class="lhead lclient ${cOpen ? 'open' : ''}" data-act="xh" data-k="${esc(ck)}" style="--d:0">${I.caret}<span class="name">${cg.c ? esc(cg.c.name) : 'Zonder klant'}</span><span class="ltot">${fmtDur(cg.ms)}</span></div>`;
+        if (!cOpen) continue;
+        for (const pg of cg.projects) {
+          const pk = `${dk}|p|${pg.p ? pg.p.id : '-'}|${cg.c ? cg.c.id : '-'}`, pOpen = !listClosed.has(pk);
+          html += `<div class="lhead lproject ${pOpen ? 'open' : ''}" data-act="xh" data-k="${esc(pk)}" style="--d:1;--c:${pg.p ? esc(pg.p.color) : '#bbb'}">${I.caret}<span class="name">${pg.p ? esc(pg.p.name) : 'Geen project'}</span><span class="ltot">${fmtDur(pg.ms)}</span></div>`;
+          if (!pOpen) continue;
+          for (const g of pg.groups) {
+            if (g.list.length === 1) { html += rowHtml(g.list[0], 2); continue; }
+            listGroups.set(g.key, g);
+            html += groupHtml(g);
+            if (listOpen.has(g.key)) html += [...g.list].sort((a, b) => new Date(a.start_time) - new Date(b.start_time)).map(e => rowHtml(e, 3, true)).join('');
+          }
+        }
+      }
       html += '</div>';
     }
   }
@@ -858,8 +933,19 @@ function renderList() {
   $('#more').onclick = loadMore;
   el.onclick = async ev => {
     const t = ev.target.closest('[data-act]'); if (!t) return;
-    const e = entries.find(x => x.id === t.closest('.row').dataset.id); if (!e) return;
     const act = t.dataset.act;
+    if (act === 'xh') { const k = t.dataset.k; listClosed.has(k) ? listClosed.delete(k) : listClosed.add(k); return renderList(); }
+    if (act === 'xg' || act === 'gplay' || act === 'gbill') {
+      const g = listGroups.get(t.closest('[data-g]').dataset.g); if (!g) return;
+      if (act === 'xg') { listOpen.has(g.key) ? listOpen.delete(g.key) : listOpen.add(g.key); return renderList(); }
+      const last = g.list[0]; // nieuwste eerst
+      if (act === 'gplay') { mode = 'timer'; return startTimer({ description: last.description, project_id: last.project_id, task_id: last.task_id, tags: last.tags, billable: last.billable }); }
+      const val = !g.list.every(e => e.billable);
+      const { error } = await sb.from('time_entries').update({ billable: val }).in('id', g.list.map(e => e.id));
+      if (!fail(error)) { g.list.forEach(e => e.billable = val); renderList(); }
+      return;
+    }
+    const e = entries.find(x => x.id === t.closest('.row')?.dataset.id); if (!e) return;
     if (act === 'edit') editEntry(e);
     else if (act === 'play') { mode = 'timer'; await startTimer({ description: e.description, project_id: e.project_id, task_id: e.task_id, tags: e.tags, billable: e.billable }); }
     else if (act === 'bill') {
@@ -870,14 +956,40 @@ function renderList() {
   };
 }
 
-function rowHtml(e) {
-  const p = projById(e.project_id), c = p && clientById(p.client_id), s = new Date(e.start_time), en = new Date(e.end_time);
-  const empty = !e.description && !taskById(e.task_id);
-  return `<div class="row" data-id="${e.id}">
+// Eén regel per taak met meerdere registraties op een dag
+function groupHtml(g) {
+  const sorted = [...g.list].sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+  const first = new Date(sorted[0].start_time), last = new Date(sorted[sorted.length - 1].end_time);
+  const t = taskById(g.list[0].task_id);
+  const title = t ? esc(t.name) : esc(g.list[0].description || '(geen omschrijving)');
+  const allBill = g.list.every(e => e.billable), someBill = g.list.some(e => e.billable);
+  const open = listOpen.has(g.key);
+  return `<div class="row grp ${open ? 'open' : ''}" data-g="${esc(g.key)}" style="--d:2">
+    <div class="main" data-act="xg" title="${open ? 'Inklappen' : 'Losse registraties tonen'}">
+      ${I.caret}<span class="dtext ${t || g.list[0].description ? '' : 'empty'}">${title}</span><span class="count">${g.list.length}</span>
+    </div>
+    <div class="cell bill"><button class="iconbtn dollar ${allBill ? 'on' : someBill ? 'half' : ''}" data-act="gbill" title="Declarabel (alle ${g.list.length})">$</button></div>
+    <div class="cell range">${fmtTime(first)} – ${fmtTime(last)}</div>
+    <div class="cell dur">${fmtDur(g.ms)}</div>
+    <div class="cell btns">
+      <button class="rowbtn" data-act="gplay" title="Doorgaan met deze taak">${I.playo}</button>
+      <span class="rowbtn" aria-hidden="true"></span>
+    </div>
+  </div>`;
+}
+
+// Eén registratie. In een opengeklapte groep (sub) staat de taaknaam al in de groepsregel.
+function rowHtml(e, depth = 2, sub = false) {
+  const s = new Date(e.start_time), en = new Date(e.end_time);
+  const t = taskById(e.task_id);
+  let title;
+  if (sub) title = e.description ? esc(e.description) : `<span class="empty">geen omschrijving</span>`;
+  else title = entryTitle(e);
+  const empty = !sub && !e.description && !t;
+  return `<div class="row ${sub ? 'sub' : ''}" data-id="${e.id}" style="--d:${depth}">
     <div class="main" data-act="edit">
-      <span class="dtext ${empty ? 'empty' : ''}">${entryTitle(e)}</span>
-      ${p ? `<span class="proj" style="color:${esc(p.color)}">${esc(p.name)}${c ? ` <small>· ${esc(c.name)}</small>` : ''}</span>` : ''}
-      ${e.tags?.length ? `<span class="tags">${e.tags.map(t => `<span class="chip">${esc(t)}</span>`).join('')}</span>` : ''}
+      ${sub ? '' : '<span class="caretpad"></span>'}<span class="dtext ${empty ? 'empty' : ''}">${title}</span>
+      ${e.tags?.length ? `<span class="tags">${e.tags.map(x => `<span class="chip">${esc(x)}</span>`).join('')}</span>` : ''}
     </div>
     <div class="cell bill"><button class="iconbtn dollar ${e.billable ? 'on' : ''}" data-act="bill" title="Declarabel">$</button></div>
     <div class="cell range">${fmtTime(s)} – ${fmtTime(en)}</div>
